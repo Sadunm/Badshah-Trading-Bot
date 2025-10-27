@@ -19,122 +19,62 @@
     {
       "symbol": "BTCUSDT",
       "regime": 0,
-      "strategy_type": "Simple_Momentum",
+      "strategy_type": "RSI_EMA_Advanced",
       "params": {
-        "ema_short": 8,
-        "ema_long": 21
+        "rsi_period": 14,
+        "rsi_oversold": 35,
+        "rsi_overbought": 65,
+        "ema_fast": 9,
+        "ema_slow": 21
       },
       "priority": 1
     },
     {
       "symbol": "ETHUSDT",
       "regime": 0,
-      "strategy_type": "Simple_Momentum",
+      "strategy_type": "RSI_EMA_Advanced",
       "params": {
-        "ema_short": 8,
-        "ema_long": 21
+        "rsi_period": 14,
+        "rsi_oversold": 35,
+        "rsi_overbought": 65,
+        "ema_fast": 9,
+        "ema_slow": 21
       },
       "priority": 1
     },
     {
       "symbol": "BNBUSDT",
       "regime": 0,
-      "strategy_type": "Simple_Momentum",
+      "strategy_type": "RSI_EMA_Advanced",
       "params": {
-        "ema_short": 8,
-        "ema_long": 21
+        "rsi_period": 14,
+        "rsi_oversold": 35,
+        "rsi_overbought": 65,
+        "ema_fast": 9,
+        "ema_slow": 21
       },
       "priority": 1
     },
     {
       "symbol": "SOLUSDT",
       "regime": 0,
-      "strategy_type": "Simple_Momentum",
-      "params": {
-        "ema_short": 8,
-        "ema_long": 21
-      },
-      "priority": 1
-    },
-    {
-      "symbol": "XRPUSDT",
-      "regime": 0,
-      "strategy_type": "Simple_Momentum",
-      "params": {
-        "ema_short": 8,
-        "ema_long": 21
-      },
-      "priority": 1
-    },
-    {
-      "symbol": "ADAUSDT",
-      "regime": 0,
-      "strategy_type": "Simple_Momentum",
-      "params": {
-        "ema_short": 8,
-        "ema_long": 21
-      },
-      "priority": 1
-    },
-    {
-      "symbol": "DOGEUSDT",
-      "regime": 0,
-      "strategy_type": "Simple_Momentum",
-      "params": {
-        "ema_short": 8,
-        "ema_long": 21
-      },
-      "priority": 1
-    },
-    {
-      "symbol": "BTCUSDT",
-      "regime": 0,
-      "strategy_type": "Simple_MeanReversion",
+      "strategy_type": "RSI_EMA_Advanced",
       "params": {
         "rsi_period": 14,
-        "rsi_oversold": 30,
-        "rsi_overbought": 70
+        "rsi_oversold": 35,
+        "rsi_overbought": 65,
+        "ema_fast": 9,
+        "ema_slow": 21
       },
-      "priority": 2
-    },
-    {
-      "symbol": "ETHUSDT",
-      "regime": 0,
-      "strategy_type": "Simple_MeanReversion",
-      "params": {
-        "rsi_period": 14,
-        "rsi_oversold": 30,
-        "rsi_overbought": 70
-      },
-      "priority": 2
-    },
-    {
-      "symbol": "BTCUSDT",
-      "regime": 0,
-      "strategy_type": "Simple_Breakout",
-      "params": {
-        "lookback": 20,
-        "vol_mult": 1.5
-      },
-      "priority": 3
-    },
-    {
-      "symbol": "ETHUSDT",
-      "regime": 0,
-      "strategy_type": "Simple_Breakout",
-      "params": {
-        "lookback": 20,
-        "vol_mult": 1.5
-      },
-      "priority": 3
+      "priority": 1
     }
   ],
   "safety_limits": {
-    "max_daily_trades": 20,
-    "max_concurrent_positions": 5,
-    "emergency_stop_loss": 0.05,
-    "position_size_limit": 0.01,
-    "max_loss_per_trade": 0.01
+    "max_daily_trades": 15,
+    "max_concurrent_positions": 4,
+    "emergency_stop_loss": 0.03,
+    "position_size_limit": 0.005,
+    "max_loss_per_trade": 0.015
   },
   "monitoring": {
     "health_check_interval": 300,

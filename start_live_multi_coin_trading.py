@@ -10,6 +10,8 @@ import time
 import requests
 import json
 import logging
+import numpy as np
+import talib
 from datetime import datetime
 from threading import Thread
 from flask import Flask, jsonify
@@ -41,7 +43,7 @@ class MultiCoinTrading:
         # Trading state
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
-        self.positions = {}  # {symbol: {'quantity': X, 'avg_price': Y}}
+        self.positions = {}  # {symbol: {'quantity': X, 'avg_price': Y, 'entry_price': Z}}
         self.trades = []
         self.is_running = True
         
@@ -49,7 +51,18 @@ class MultiCoinTrading:
         self.fee_rate = 0.0005  # 0.05%
         self.slippage_rate = 0.0002  # 0.02%
         
+        # Strategy parameters (OPTIMIZED)
+        self.rsi_period = 14
+        self.rsi_oversold = 35  # Buy signal
+        self.rsi_overbought = 65  # Sell signal
+        self.ema_fast = 9
+        self.ema_slow = 21
+        self.stop_loss_pct = 0.015  # 1.5% stop loss
+        self.take_profit_pct = 0.025  # 2.5% take profit
+        self.risk_per_trade = 0.005  # 0.5% per trade (reduced)
+        
         logger.info(f"Multi-Coin Trading initialized with ${initial_capital:.2f}")
+        logger.info(f"[STRATEGY] RSI({self.rsi_period}) + EMA({self.ema_fast}/{self.ema_slow}) + SL/TP")
         
     def get_current_price(self, symbol):
         """Get current price for a symbol"""
@@ -72,10 +85,113 @@ class MultiCoinTrading:
             logger.error(f"Error getting price for {symbol}: {e}")
             return None
     
+    def get_historical_data(self, symbol, interval='5m', limit=100):
+        """Get historical kline/candlestick data"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/api/v3/klines",
+                params={
+                    'symbol': symbol,
+                    'interval': interval,
+                    'limit': limit
+                },
+                timeout=10
+            )
+            if response.status_code == 200:
+                klines = response.json()
+                # Extract close prices
+                closes = np.array([float(k[4]) for k in klines])
+                highs = np.array([float(k[2]) for k in klines])
+                lows = np.array([float(k[3]) for k in klines])
+                return closes, highs, lows
+            return None, None, None
+        except Exception as e:
+            logger.error(f"Error getting historical data for {symbol}: {e}")
+            return None, None, None
+    
+    def calculate_rsi(self, closes):
+        """Calculate RSI indicator"""
+        try:
+            if len(closes) < self.rsi_period + 1:
+                return None
+            rsi = talib.RSI(closes, timeperiod=self.rsi_period)
+            return rsi[-1]  # Return latest RSI
+        except Exception as e:
+            logger.error(f"Error calculating RSI: {e}")
+            return None
+    
+    def calculate_ema(self, closes):
+        """Calculate EMA indicators"""
+        try:
+            if len(closes) < max(self.ema_fast, self.ema_slow) + 1:
+                return None, None
+            ema_fast = talib.EMA(closes, timeperiod=self.ema_fast)
+            ema_slow = talib.EMA(closes, timeperiod=self.ema_slow)
+            return ema_fast[-1], ema_slow[-1]
+        except Exception as e:
+            logger.error(f"Error calculating EMA: {e}")
+            return None, None
+    
+    def generate_signal(self, symbol):
+        """Generate buy/sell signal based on RSI + EMA strategy"""
+        try:
+            # Get historical data
+            closes, highs, lows = self.get_historical_data(symbol)
+            if closes is None or len(closes) < 50:
+                return None, None
+            
+            # Calculate indicators
+            rsi = self.calculate_rsi(closes)
+            ema_fast, ema_slow = self.calculate_ema(closes)
+            
+            if rsi is None or ema_fast is None or ema_slow is None:
+                return None, None
+            
+            current_price = closes[-1]
+            
+            # BUY Signal: RSI oversold + EMA fast > EMA slow (uptrend)
+            if rsi < self.rsi_oversold and ema_fast > ema_slow:
+                logger.info(f"[SIGNAL] {symbol} BUY: RSI={rsi:.1f}, EMA_fast={ema_fast:.2f} > EMA_slow={ema_slow:.2f}")
+                return 'BUY', current_price
+            
+            # SELL Signal: RSI overbought + EMA fast < EMA slow (downtrend)
+            elif rsi > self.rsi_overbought and ema_fast < ema_slow:
+                logger.info(f"[SIGNAL] {symbol} SELL: RSI={rsi:.1f}, EMA_fast={ema_fast:.2f} < EMA_slow={ema_slow:.2f}")
+                return 'SELL', current_price
+            
+            return None, current_price
+            
+        except Exception as e:
+            logger.error(f"Error generating signal for {symbol}: {e}")
+            return None, None
+    
+    def check_stop_loss_take_profit(self, symbol, current_price):
+        """Check if stop-loss or take-profit is hit"""
+        if symbol not in self.positions:
+            return None
+        
+        position = self.positions[symbol]
+        entry_price = position.get('entry_price', position['avg_price'])
+        
+        # Calculate PnL percentage
+        pnl_pct = (current_price - entry_price) / entry_price
+        
+        # Stop Loss hit
+        if pnl_pct <= -self.stop_loss_pct:
+            logger.warning(f"[STOP-LOSS] {symbol}: {pnl_pct*100:.2f}% loss - Auto selling!")
+            return 'SELL'
+        
+        # Take Profit hit
+        elif pnl_pct >= self.take_profit_pct:
+            logger.info(f"[TAKE-PROFIT] {symbol}: {pnl_pct*100:.2f}% profit - Auto selling!")
+            return 'SELL'
+        
+        return None
+    
     def calculate_position_size(self, price, symbol):
         """Calculate appropriate position size based on capital and price"""
-        # Use 1% of capital per trade
-        risk_amount = self.current_capital * 0.01
+        # Use configured risk per trade (0.5%)
+        risk_amount = self.current_capital * self.risk_per_trade
         
         # Calculate quantity
         quantity = risk_amount / price
@@ -122,7 +238,7 @@ class MultiCoinTrading:
                 self.current_capital -= total_cost
                 
                 if symbol not in self.positions:
-                    self.positions[symbol] = {'quantity': 0, 'avg_price': 0}
+                    self.positions[symbol] = {'quantity': 0, 'avg_price': 0, 'entry_price': exec_price}
                 
                 # Update position
                 old_qty = self.positions[symbol]['quantity']
@@ -130,9 +246,13 @@ class MultiCoinTrading:
                 new_qty = old_qty + quantity
                 new_avg_price = ((old_qty * old_price) + (quantity * exec_price)) / new_qty if new_qty > 0 else exec_price
                 
+                # Store entry price for first buy
+                entry_price = self.positions[symbol].get('entry_price', exec_price)
+                
                 self.positions[symbol] = {
                     'quantity': new_qty,
-                    'avg_price': new_avg_price
+                    'avg_price': new_avg_price,
+                    'entry_price': entry_price if old_qty > 0 else exec_price  # Reset on new position
                 }
                 
                 order = {
@@ -288,8 +408,11 @@ class MultiCoinTrading:
         self.update_global_stats(prices)
     
     def start_trading(self, symbols, cycles=10):
-        """Start multi-coin trading"""
-        logger.info(f"[START] Trading for {len(symbols)} coins: {', '.join(symbols)}")
+        """Start multi-coin trading with RSI + EMA strategy"""
+        logger.info(f"[START] Trading {len(symbols)} coins with Advanced Strategy")
+        logger.info(f"[STRATEGY] RSI({self.rsi_period}) + EMA({self.ema_fast}/{self.ema_slow})")
+        logger.info(f"[RISK] Stop-Loss: {self.stop_loss_pct*100:.1f}% | Take-Profit: {self.take_profit_pct*100:.1f}%")
+        logger.info(f"[COINS] {', '.join(symbols)}")
         
         try:
             for cycle in range(1, cycles + 1):
@@ -297,7 +420,7 @@ class MultiCoinTrading:
                 logger.info(f"CYCLE {cycle}/{cycles}")
                 logger.info(f"{'='*70}")
                 
-                # Get current prices for all symbols
+                # Get current prices
                 prices = {}
                 for symbol in symbols:
                     price = self.get_current_price(symbol)
@@ -309,33 +432,52 @@ class MultiCoinTrading:
                 
                 if not prices:
                     logger.error("[ERROR] No prices available, skipping cycle")
-                    time.sleep(30)
+                    time.sleep(60)
                     continue
                 
-                # Simple trading logic
-                for symbol in prices:
-                    price = prices[symbol]
+                # Strategy-based trading logic
+                for symbol in symbols:
+                    try:
+                        current_price = prices.get(symbol)
+                        if not current_price:
+                            continue
+                        
+                        # Check Stop-Loss / Take-Profit first (for existing positions)
+                        if symbol in self.positions and self.positions[symbol]['quantity'] > 0:
+                            sl_tp_action = self.check_stop_loss_take_profit(symbol, current_price)
+                            if sl_tp_action == 'SELL':
+                                self.place_order(symbol, 'SELL', current_price)
+                                continue
+                        
+                        # Generate trading signal based on indicators
+                        signal, signal_price = self.generate_signal(symbol)
+                        
+                        if signal == 'BUY':
+                            # Only buy if we don't have a position
+                            if symbol not in self.positions or self.positions[symbol]['quantity'] == 0:
+                                # Check if we have enough capital (max 5 positions)
+                                if len([p for p in self.positions.values() if p['quantity'] > 0]) < 5:
+                                    self.place_order(symbol, 'BUY', current_price)
+                                else:
+                                    logger.warning(f"[LIMIT] Max 5 positions reached, skipping {symbol}")
+                        
+                        elif signal == 'SELL':
+                            # Only sell if we have a position
+                            if symbol in self.positions and self.positions[symbol]['quantity'] > 0:
+                                self.place_order(symbol, 'SELL', current_price)
                     
-                    # Buy on first cycle if we don't have position
-                    if cycle == 1 and symbol not in self.positions:
-                        self.place_order(symbol, 'BUY', price)
-                    
-                    # Sell on 5th cycle if we have position
-                    elif cycle == 5 and symbol in self.positions:
-                        self.place_order(symbol, 'SELL', price)
-                    
-                    # Buy again on 7th cycle
-                    elif cycle == 7 and symbol not in self.positions:
-                        self.place_order(symbol, 'BUY', price)
+                    except Exception as e:
+                        logger.error(f"Error processing {symbol}: {e}")
+                        continue
                 
                 # Print status
                 logger.info("")
                 self.print_status(prices)
                 
-                # Wait before next cycle
+                # Wait before next cycle (increased to 2 minutes for better signals)
                 if cycle < cycles:
-                    logger.info(f"\n[WAIT] Waiting 30 seconds...\n")
-                    time.sleep(30)
+                    logger.info(f"\n[WAIT] Waiting 2 minutes...\n")
+                    time.sleep(120)
             
             # Final summary
             logger.info(f"\n{'='*70}")
@@ -345,12 +487,13 @@ class MultiCoinTrading:
             final_prices = {s: self.get_current_price(s) for s in symbols}
             self.print_status(final_prices)
             
-            # Close all positions
+            # Close all positions at end of cycle
             logger.info("\n[CLOSING] Closing all positions...")
             for symbol in list(self.positions.keys()):
-                price = final_prices.get(symbol)
-                if price:
-                    self.place_order(symbol, 'SELL', price)
+                if self.positions[symbol]['quantity'] > 0:
+                    price = final_prices.get(symbol)
+                    if price:
+                        self.place_order(symbol, 'SELL', price)
             
             # Final stats
             final_value = self.current_capital
@@ -358,7 +501,7 @@ class MultiCoinTrading:
             total_pnl_pct = (total_pnl / self.initial_capital) * 100
             
             logger.info(f"\n{'='*70}")
-            logger.info("[COMPLETE] TRADING COMPLETE!")
+            logger.info("[COMPLETE] TRADING CYCLE COMPLETE!")
             logger.info(f"{'='*70}")
             logger.info(f"Initial Capital: ${self.initial_capital:.2f}")
             logger.info(f"Final Capital: ${final_value:.2f}")

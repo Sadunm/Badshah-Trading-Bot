@@ -1,15 +1,14 @@
 services:
   - type: web
-    name: badshah-trading-bot
-    env: python
+    name: badshah-trading-bot-advanced
+    env: docker
     region: singapore
     plan: free
     branch: main
-    buildCommand: "pip install --no-cache-dir -r requirements_render.txt"
-    startCommand: "python start_live_multi_coin_trading.py"
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
       - key: PORT
         value: 10000
+    healthCheckPath: /health
+    autoDeploy: true
 

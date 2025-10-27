@@ -25,8 +25,8 @@ RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
 WORKDIR /app
 
 # Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements_render.txt .
+RUN pip install --no-cache-dir -r requirements_render.txt
 
 # Copy application files
 COPY start_live_multi_coin_trading.py .
