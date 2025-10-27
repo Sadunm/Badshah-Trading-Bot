@@ -17,6 +17,7 @@ RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
     ./configure --prefix=/usr && \
     make && \
     make install && \
+    ldconfig && \
     cd .. && \
     rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
 
@@ -43,4 +44,5 @@ ENV TZ=UTC
 
 # Run the bot
 CMD ["python", "-u", "start_live_multi_coin_trading.py"]
+
 
