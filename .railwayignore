@@ -1,0 +1,50 @@
+# Railway ignore file - don't upload these to Railway
+
+# Virtual environment
+venv/
+env/
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Logs and data (will be generated on Railway)
+logs/
+reports/
+data/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Documentation (not needed for deployment)
+documentation/
+*.md
+*.txt
+
+# Old/archive files
+_archive/
+_old/
+backup/
+
+# Windows
+*.bat
+Thumbs.db
+
+# Mac
+.DS_Store
+
+# Test files
+test_*.py
+*_test.py
+

@@ -1,0 +1,237 @@
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║      🚂 RAILWAY.APP E DEPLOY - BANGLA GUIDE 🇧🇩                  ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KEN RAILWAY?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ SHOBCHEYE EASY - 5 minute e deploy hoye jabe
+✅ FREE - Protimase $5 free credit paben
+✅ AUTO-DEPLOY - GitHub e push korle automatic deploy hobe
+✅ 24/7 - Bot running thakbe, automatic restart
+✅ LOGS - Dashboard e shob logs dekhte parben
+✅ NO CREDIT CARD - Free te start korte paren
+
+AWS/DigitalOcean er cheye 100 times easy! 🚀
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DEPLOY KORAR PROCESS (SUPER EASY!)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+METHOD 1: GITHUB THEKE (RECOMMENDED)
+────────────────────────────────────
+
+Step 1: Code GitHub e push koro
+   
+   # Ekbar initialize koro
+   cd "BADSHAH TRADEINGGG"
+   git init
+   git add .
+   git commit -m "Railway deploy ready"
+   
+   # GitHub e new repo create koro, then:
+   git remote add origin https://github.com/YOUR_USERNAME/trading-bot.git
+   git branch -M main
+   git push -u origin main
+
+
+Step 2: Railway.app e deploy koro
+
+   1. Jao: https://railway.app
+   2. "Start a New Project" click koro
+   3. "Deploy from GitHub repo" select koro
+   4. Tomar repo choose koro
+   5. "Deploy" click koro
+   
+   BAS! HOYE GELO! 🎉
+   
+   Bot automatically start hobe ar trade korte shuru korbe!
+
+
+METHOD 2: RAILWAY CLI DIE (ADVANCED)
+─────────────────────────────────────
+
+   # CLI install koro
+   iwr https://railway.app/install.ps1 | iex
+   
+   # Login koro
+   railway login
+   
+   # Deploy koro
+   cd "BADSHAH TRADEINGGG"
+   railway init
+   railway up
+   
+   DONE! 🚀
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MONITOR KORO KIVABE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Railway Dashboard: https://railway.app/dashboard
+
+2. Tomar project click koro
+
+3. "Deployments" → "View Logs" e jao
+
+4. Live logs dekhte pabe:
+   
+   [START] Trading for 7 coins...
+   [BUY] 0.4900 SOLUSDT @ $204.14
+   [CAPITAL] $9321.46 | Portfolio: $9999.53
+   [STATS] Trades: 7 | Win Rate: 57.1%
+
+5. Dashboard e dekhabe:
+   - Status (Running/Stopped)
+   - CPU usage
+   - Memory usage
+   - Auto-restart count
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KHAROCH KOTO?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FREE TIER:
+   - $5 free credit protimase
+   - ~20 din 24/7 cholbe
+   - Testing er jonno perfect!
+
+HOBBY PLAN ($5/month):
+   - $5 credit + additional usage
+   - Continuous 24/7 trading
+   - Tomar bot er jonno: $5-10/month hole hobе
+
+TAKA NA THAKLE?
+   - Free tier e test koro 7-14 din
+   - Profit hocche mone hoile Hobby plan nao
+   
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  USEFUL COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Logs dekho
+railway logs
+
+# Status check koro
+railway status
+
+# Restart koro
+railway restart
+
+# Dashboard kholo
+railway open
+
+# Update deploy koro (code change korar por)
+git add .
+git commit -m "Updated"
+git push
+# Railway automatic redeploy korbe!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  AUTO-DEPLOY (MAGIC!)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GitHub theke deploy korle:
+
+1. Code edit koro locally
+2. Git e push koro:
+   
+   git add .
+   git commit -m "Strategy updated"
+   git push
+
+3. Railway AUTOMATIC redeploy korbe! 🎉
+
+Manual deploy dorkar nai!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TIMELINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Minute 1-2:   Railway account banao
+Minute 3-5:   GitHub repo connect koro
+Minute 6-10:  Railway build korche...
+Minute 11:    Bot LIVE! Trading shuru! 🚀
+
+TOTAL: 10 minute max!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Build fail hoiche?
+   → Railway logs check koro
+   → Dockerfile ache ki na dekho
+   → Shob files push hoyeche ki na check koro
+
+Bot trade korche na?
+   → Logs dekho Railway dashboard e
+   → Error message khojo
+   → Internet connection check koro
+
+Credits shesh hoye jacche?
+   → Free tier: $5/month
+   → Bot use kore: ~$0.30-0.50/day
+   → Hobby plan nao continuous er jonno
+
+Memory issue?
+   → Coin count reduce koro config e
+   → OR Hobby plan e upgrade koro
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  STEP BY STEP CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+□ Code GitHub e push korechi
+□ Railway account create korechi (railway.app)
+□ GitHub repo connect korechi Railway te
+□ Deployment success (logs e check korbo)
+□ Bot running ache (logs e "[START]" dekhbo)
+□ Trade hocche ("[BUY]" / "[SELL]" dekhbo)
+□ 24 ghonta monitor korbo
+□ Credits usage check korbo
+□ Dorkar hole Hobby plan nibo ($5/month)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FULL GUIDE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+English guide: 🚂_RAILWAY_DEPLOYMENT.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FILES READY ACHE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Dockerfile - Railway er jonno optimized
+✅ railway.toml - Railway configuration
+✅ railway.json - Alternative config
+✅ .railwayignore - Unnecessary files skip korbe
+✅ requirements.txt - All dependencies
+
+Tomar kichui korte hobe na, just deploy koro! 🚀
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  QUICK START
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Code GitHub e push koro
+2. railway.app e jao
+3. "Deploy from GitHub" select koro
+4. Tomar repo choose koro
+5. Deploy button e click koro
+
+BAS! BOT LIVE! 🎉
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Railway সবচেয়ে সহজ cloud platform! AWS/DigitalOcean এর দরকার নেই!
+
+শুধু GitHub এ push → Railway তে connect → DONE! 🚀
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Shubho kamona! Good luck! 🎉📈💰
+

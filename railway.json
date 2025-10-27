@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "deployment/Dockerfile"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "startCommand": "python start_live_multi_coin_trading.py",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
+

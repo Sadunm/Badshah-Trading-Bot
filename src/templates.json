@@ -1,0 +1,23 @@
+{
+  "Pullback": {
+    "rsi_entry": [32, 35, 38],
+    "sl_mult": [1.8, 2.2, 2.6],
+    "tp_mult": [1.6, 2.0, 2.5],
+    "volume_ratio": [1.0, 1.1, 1.2]
+  },
+  "Breakout": {
+    "lookback": [20, 30, 50],
+    "vol_mult": [1.2, 1.4, 1.6],
+    "sl_mult": [1.5, 2.0, 2.5]
+  },
+  "MeanReversion": {
+    "rsi_buy": [25, 30, 35],
+    "sl_mult": [1.2, 1.5, 2.0],
+    "tp_mult": [1.2, 1.6, 2.0]
+  },
+  "Momentum": {
+    "ema_short": [8, 12],
+    "ema_long": [21, 26],
+    "macd_hist_thresh": [0.0, 0.0003, 0.0006]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "Simple_Momentum": {
+    "ema_short": [5, 8, 12, 16, 20],
+    "ema_long": [21, 26, 34, 50, 100],
+    "rsi_period": [14, 21, 28],
+    "rsi_oversold": [20, 25, 30],
+    "rsi_overbought": [70, 75, 80]
+  },
+  "Simple_Breakout": {
+    "lookback": [5, 10, 15, 20, 30],
+    "vol_mult": [1.2, 1.5, 2.0, 2.5, 3.0],
+    "price_threshold": [0.005, 0.01, 0.015, 0.02, 0.025]
+  },
+  "Simple_MeanReversion": {
+    "rsi_period": [10, 14, 18, 21, 28],
+    "rsi_oversold": [20, 25, 30, 35, 40],
+    "rsi_overbought": [60, 65, 70, 75, 80],
+    "bb_period": [15, 20, 25, 30],
+    "bb_std": [1.0, 1.5, 2.0, 2.5]
+  },
+  "Advanced_Momentum": {
+    "ema_short": [5, 8, 12, 16, 20],
+    "ema_long": [21, 26, 34, 50, 100],
+    "macd_fast": [8, 12, 16, 20],
+    "macd_slow": [21, 26, 34, 50],
+    "macd_signal": [6, 9, 12, 15]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "max_open_trades": 3,
+  "stake_currency": "USDT",
+  "stake_amount": 50.0,
+  "dry_run": true,
+  "timeframe": "5m",
+  "strategy": "AutoGenStrategy",
+  "strategy_path": "user_data\\strategies",
+  "dataformat_ohlcv": "jsongz",
+  "cancel_open_orders_on_exit": true,
+  "bid_strategy": {
+    "price_side": "bid",
+    "ask_last_balance": 0.0
+  },
+  "exchange": {
+    "name": "binance",
+    "key": "",
+    "secret": "",
+    "ccxt_config": {
+      "enableRateLimit": true
+    },
+    "ccxt_async_config": {
+      "enableRateLimit": true
+    },
+    "pair_whitelist": [
+      "BTC/USDT",
+      "ETH/USDT"
+    ]
+  },
+  "pairlists": [
+    {
+      "method": "StaticPairList"
+    }
+  ],
+  "protections": [
+    {
+      "method": "CooldownPeriod",
+      "stop_duration": 60
+    },
+    {
+      "method": "StoplossGuard",
+      "lookback_period_candles": 48,
+      "trade_limit": 3,
+      "stop_duration_candles": 48,
+      "only_per_pair": false
+    }
+  ]
+}

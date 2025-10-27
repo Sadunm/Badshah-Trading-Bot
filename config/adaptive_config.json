@@ -1,0 +1,151 @@
+{
+  "system_config": {
+    "auto_start_paper": true,
+    "risk_settings": {
+      "risk_per_trade": 0.01,
+      "max_exposure_per_symbol": 0.05,
+      "daily_stop_loss": 0.02
+    },
+    "trading_settings": {
+      "fee_rate": 0.0005,
+      "slippage_rate": 0.0002,
+      "initial_capital": 10000,
+      "risk_per_trade_pct": 0.01,
+      "max_exposure_pct": 0.20,
+      "daily_stop_loss_pct": 0.02
+    }
+  },
+  "strategies": [
+    {
+      "symbol": "BTCUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_Momentum",
+      "params": {
+        "ema_short": 8,
+        "ema_long": 21
+      },
+      "priority": 1
+    },
+    {
+      "symbol": "ETHUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_Momentum",
+      "params": {
+        "ema_short": 8,
+        "ema_long": 21
+      },
+      "priority": 1
+    },
+    {
+      "symbol": "BNBUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_Momentum",
+      "params": {
+        "ema_short": 8,
+        "ema_long": 21
+      },
+      "priority": 1
+    },
+    {
+      "symbol": "SOLUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_Momentum",
+      "params": {
+        "ema_short": 8,
+        "ema_long": 21
+      },
+      "priority": 1
+    },
+    {
+      "symbol": "XRPUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_Momentum",
+      "params": {
+        "ema_short": 8,
+        "ema_long": 21
+      },
+      "priority": 1
+    },
+    {
+      "symbol": "ADAUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_Momentum",
+      "params": {
+        "ema_short": 8,
+        "ema_long": 21
+      },
+      "priority": 1
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_Momentum",
+      "params": {
+        "ema_short": 8,
+        "ema_long": 21
+      },
+      "priority": 1
+    },
+    {
+      "symbol": "BTCUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_MeanReversion",
+      "params": {
+        "rsi_period": 14,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70
+      },
+      "priority": 2
+    },
+    {
+      "symbol": "ETHUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_MeanReversion",
+      "params": {
+        "rsi_period": 14,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70
+      },
+      "priority": 2
+    },
+    {
+      "symbol": "BTCUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_Breakout",
+      "params": {
+        "lookback": 20,
+        "vol_mult": 1.5
+      },
+      "priority": 3
+    },
+    {
+      "symbol": "ETHUSDT",
+      "regime": 0,
+      "strategy_type": "Simple_Breakout",
+      "params": {
+        "lookback": 20,
+        "vol_mult": 1.5
+      },
+      "priority": 3
+    }
+  ],
+  "safety_limits": {
+    "max_daily_trades": 20,
+    "max_concurrent_positions": 5,
+    "emergency_stop_loss": 0.05,
+    "position_size_limit": 0.01,
+    "max_loss_per_trade": 0.01
+  },
+  "monitoring": {
+    "health_check_interval": 300,
+    "log_level": "INFO",
+    "alert_thresholds": {
+      "max_drawdown": 0.1,
+      "min_winrate": 0.3,
+      "max_loss_streak": 5
+    }
+  },
+  "safety_mode": true,
+  "created_at": "2025-10-23T16:48:27.495144Z",
+  "version": "1.0.0"
+}
