@@ -400,14 +400,14 @@ if __name__ == '__main__':
     # Start trading
     trader = MultiCoinTrading(API_KEY, SECRET_KEY, initial_capital=10000)
     
-    # Test connection
+    # Test connection (optional - don't exit on failure for cloud deployment)
     logger.info("Testing API connection...")
     test_price = trader.get_current_price('BTCUSDT')
     if test_price:
         logger.info(f"[OK] API connection OK (BTC: ${test_price:.2f})")
     else:
-        logger.error("[ERROR] API connection failed!")
-        sys.exit(1)
+        logger.warning("[WARNING] Initial API test failed - will retry during trading cycles")
+        logger.warning("[INFO] Flask server is running - bot is alive!")
     
     # Run trading continuously (for cloud deployment)
     try:
