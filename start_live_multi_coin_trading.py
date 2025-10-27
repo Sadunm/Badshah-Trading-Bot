@@ -11,6 +11,8 @@ import requests
 import json
 import logging
 from datetime import datetime
+from threading import Thread
+from flask import Flask, jsonify
 
 # Setup logging
 logging.basicConfig(
@@ -324,6 +326,53 @@ def load_symbols_from_config():
         logger.warning(f"Failed to load config: {e}")
         return ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']  # Default
 
+# Flask app for health check (Render.com keep-alive)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    """Home endpoint"""
+    return jsonify({
+        'status': 'running',
+        'bot': 'BADSHAH Trading Bot',
+        'version': '1.0',
+        'message': 'Bot is alive and trading!'
+    })
+
+@app.route('/health')
+def health():
+    """Health check endpoint for UptimeRobot"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat()
+    }), 200
+
+@app.route('/status')
+def status():
+    """Trading status endpoint"""
+    try:
+        # Try to get BTC price to verify API connection
+        response = requests.get('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', timeout=5)
+        btc_price = response.json().get('price', 'N/A') if response.status_code == 200 else 'N/A'
+        
+        return jsonify({
+            'status': 'active',
+            'bot': 'Multi-Coin Trading',
+            'btc_price': btc_price,
+            'timestamp': datetime.now().isoformat()
+        })
+    except:
+        return jsonify({
+            'status': 'active',
+            'bot': 'Multi-Coin Trading',
+            'timestamp': datetime.now().isoformat()
+        })
+
+def run_flask():
+    """Run Flask in a separate thread"""
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
 if __name__ == '__main__':
     print("\n" + "="*70)
     print("  BADSHAH TRADING BOT - MULTI-COIN LIVE PAPER TRADING")
@@ -332,21 +381,18 @@ if __name__ == '__main__':
     # Create logs directory
     os.makedirs('logs', exist_ok=True)
     
+    # Start Flask server in background thread
+    logger.info("Starting web server for health checks...")
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info("[OK] Web server started")
+    
     # Load symbols from config
     symbols = load_symbols_from_config()
     logger.info(f"Loaded {len(symbols)} coins from config: {', '.join(symbols)}")
     
-    # Ask for confirmation
-    print(f"\nThis will trade the following {len(symbols)} coins:")
-    for i, symbol in enumerate(symbols, 1):
-        print(f"  {i}. {symbol}")
-    
-    print("\nPress Ctrl+C to stop at any time")
-    confirm = input("\nType YES to start: ").strip().upper()
-    
-    if confirm != 'YES':
-        print("Trading cancelled.")
-        sys.exit(0)
+    print(f"\n[INFO] Trading {len(symbols)} coins: {', '.join(symbols)}")
+    print("[INFO] Press Ctrl+C to stop at any time")
     
     # Start trading
     trader = MultiCoinTrading(API_KEY, SECRET_KEY, initial_capital=10000)
@@ -360,11 +406,19 @@ if __name__ == '__main__':
         logger.error("[ERROR] API connection failed!")
         sys.exit(1)
     
-    # Start multi-coin trading
-    success = trader.start_trading(symbols, cycles=10)
-    
-    if success:
-        print("\n[OK] MULTI-COIN TRADING COMPLETED!")
-    else:
-        print("\n[WARNING] Trading ended early")
+    # Run trading continuously (for cloud deployment)
+    try:
+        while True:
+            logger.info("Starting new trading cycle...")
+            success = trader.start_trading(symbols, cycles=10)
+            
+            if success:
+                logger.info("[OK] Trading cycle completed. Restarting in 60 seconds...")
+            else:
+                logger.warning("[WARNING] Trading cycle ended early. Restarting in 60 seconds...")
+            
+            time.sleep(60)  # Wait 60 seconds before next cycle
+    except KeyboardInterrupt:
+        logger.info("\n[STOP] Trading stopped by user")
+        print("\n[OK] TRADING BOT STOPPED!")
 

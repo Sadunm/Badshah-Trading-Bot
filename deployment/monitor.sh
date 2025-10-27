@@ -59,3 +59,4 @@ echo ""
 
 echo "For live logs, run: docker-compose logs -f trading-bot"
 
+

@@ -249,3 +249,4 @@ docker-compose logs -f trading-bot
 
 Good luck with your trading! 📈💰
 
+

@@ -58,3 +58,4 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
 # Run the trading bot
 CMD ["python", "start_live_multi_coin_trading.py"]
 
+
