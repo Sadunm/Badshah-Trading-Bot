@@ -204,6 +204,63 @@ class MultiCoinTrading:
         
         return total
     
+    def update_global_stats(self, prices):
+        """Update global trading stats for dashboard"""
+        global trading_stats
+        
+        portfolio_value = self.get_portfolio_value(prices)
+        pnl = portfolio_value - self.initial_capital
+        pnl_pct = (pnl / self.initial_capital) * 100
+        
+        # Calculate win rate
+        wins = sum(1 for t in self.trades if t['side'] == 'SELL' and t.get('pnl', 0) > 0)
+        total_sells = sum(1 for t in self.trades if t['side'] == 'SELL')
+        win_rate = (wins / total_sells * 100) if total_sells > 0 else 0
+        
+        # Update positions list
+        positions_list = []
+        for symbol, pos in self.positions.items():
+            current_price = prices.get(symbol, 0)
+            value = pos['quantity'] * current_price if current_price else 0
+            pos_pnl = value - (pos['quantity'] * pos['avg_price'])
+            pos_pnl_pct = (pos_pnl / (pos['quantity'] * pos['avg_price']) * 100) if pos['quantity'] * pos['avg_price'] > 0 else 0
+            
+            positions_list.append({
+                'symbol': symbol,
+                'quantity': pos['quantity'],
+                'avg_price': pos['avg_price'],
+                'current_price': current_price,
+                'value': value,
+                'pnl': pos_pnl,
+                'pnl_pct': pos_pnl_pct
+            })
+        
+        # Update recent trades (last 20)
+        recent_trades = []
+        for trade in self.trades[-20:]:
+            recent_trades.append({
+                'symbol': trade['symbol'],
+                'side': trade['side'],
+                'quantity': trade['quantity'],
+                'price': trade['price'],
+                'total': trade['quantity'] * trade['price'],
+                'time': trade['timestamp'].strftime('%H:%M:%S')
+            })
+        
+        # Update global stats
+        trading_stats.update({
+            'initial_capital': self.initial_capital,
+            'current_capital': self.current_capital,
+            'portfolio_value': portfolio_value,
+            'pnl': pnl,
+            'pnl_pct': pnl_pct,
+            'total_trades': len(self.trades),
+            'win_rate': win_rate,
+            'positions': positions_list,
+            'recent_trades': recent_trades,
+            'last_update': datetime.now().isoformat()
+        })
+    
     def print_status(self, prices):
         """Print current status"""
         portfolio_value = self.get_portfolio_value(prices)
@@ -226,6 +283,9 @@ class MultiCoinTrading:
             total_sells = sum(1 for t in self.trades if t['side'] == 'SELL')
             win_rate = (wins / total_sells * 100) if total_sells > 0 else 0
             logger.info(f"[STATS] Trades: {len(self.trades)} | Win Rate: {win_rate:.1f}%")
+        
+        # Update global stats for dashboard
+        self.update_global_stats(prices)
     
     def start_trading(self, symbols, cycles=10):
         """Start multi-coin trading"""
@@ -332,6 +392,20 @@ def load_symbols_from_config():
 # Flask app for health check (Render.com keep-alive)
 app = Flask(__name__)
 
+# Global variable to store trading stats
+trading_stats = {
+    'initial_capital': 10000,
+    'current_capital': 10000,
+    'portfolio_value': 10000,
+    'pnl': 0,
+    'pnl_pct': 0,
+    'total_trades': 0,
+    'win_rate': 0,
+    'positions': [],
+    'recent_trades': [],
+    'last_update': datetime.now().isoformat()
+}
+
 @app.route('/')
 def home():
     """Home endpoint"""
@@ -370,6 +444,316 @@ def status():
             'bot': 'Multi-Coin Trading',
             'timestamp': datetime.now().isoformat()
         })
+
+@app.route('/api/stats')
+def api_stats():
+    """API endpoint for trading stats (JSON)"""
+    return jsonify(trading_stats)
+
+@app.route('/dashboard')
+def dashboard():
+    """Live trading dashboard"""
+    html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BADSHAH Trading Bot - Live Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .positive {
+            color: #10b981;
+        }
+        
+        .negative {
+            color: #ef4444;
+        }
+        
+        .section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .section h2 {
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .position-item, .trade-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .position-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .position-details {
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 1em;
+            cursor: pointer;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+        
+        .refresh-btn:hover {
+            background: #764ba2;
+            transform: scale(1.05);
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse 2s infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span class="status-indicator"></span>BADSHAH TRADING BOT</h1>
+            <p>Live Paper Trading Dashboard</p>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Capital</div>
+                <div class="stat-value" id="capital">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Portfolio Value</div>
+                <div class="stat-value" id="portfolio">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">PnL</div>
+                <div class="stat-value" id="pnl">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Trades</div>
+                <div class="stat-value" id="trades">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Win Rate</div>
+                <div class="stat-value" id="winrate">0%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Open Positions</div>
+                <div class="stat-value" id="positions">0</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Open Positions</h2>
+            <div id="positions-list" class="loading">Loading positions...</div>
+        </div>
+        
+        <div class="section">
+            <h2>Recent Trades</h2>
+            <div id="trades-list" class="loading">Loading trades...</div>
+        </div>
+        
+        <button class="refresh-btn" onclick="loadData()">Refresh Data</button>
+    </div>
+    
+    <script>
+        function formatCurrency(value) {
+            return '$' + parseFloat(value).toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');
+        }
+        
+        function formatPercent(value) {
+            const sign = value >= 0 ? '+' : '';
+            return sign + parseFloat(value).toFixed(2) + '%';
+        }
+        
+        async function loadData() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                // Update main stats
+                document.getElementById('capital').textContent = formatCurrency(data.current_capital);
+                document.getElementById('portfolio').textContent = formatCurrency(data.portfolio_value);
+                
+                const pnlElement = document.getElementById('pnl');
+                const pnlText = formatCurrency(data.pnl) + ' (' + formatPercent(data.pnl_pct) + ')';
+                pnlElement.textContent = pnlText;
+                pnlElement.className = 'stat-value ' + (data.pnl >= 0 ? 'positive' : 'negative');
+                
+                document.getElementById('trades').textContent = data.total_trades;
+                document.getElementById('winrate').textContent = data.win_rate.toFixed(1) + '%';
+                document.getElementById('positions').textContent = data.positions.length;
+                
+                // Update positions list
+                const positionsList = document.getElementById('positions-list');
+                if (data.positions.length === 0) {
+                    positionsList.innerHTML = '<p class="loading">No open positions</p>';
+                } else {
+                    positionsList.innerHTML = data.positions.map(pos => `
+                        <div class="position-item">
+                            <div class="position-header">
+                                <span>${pos.symbol}</span>
+                                <span class="${pos.pnl_pct >= 0 ? 'positive' : 'negative'}">${formatPercent(pos.pnl_pct)}</span>
+                            </div>
+                            <div class="position-details">
+                                Quantity: ${pos.quantity} | Entry: ${formatCurrency(pos.avg_price)} | Current: ${formatCurrency(pos.current_price)} | Value: ${formatCurrency(pos.value)}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                
+                // Update recent trades
+                const tradesList = document.getElementById('trades-list');
+                if (data.recent_trades.length === 0) {
+                    tradesList.innerHTML = '<p class="loading">No recent trades</p>';
+                } else {
+                    tradesList.innerHTML = data.recent_trades.slice(0, 10).map(trade => `
+                        <div class="trade-item">
+                            <div class="position-header">
+                                <span><strong>${trade.side}</strong> ${trade.symbol}</span>
+                                <span>${trade.time}</span>
+                            </div>
+                            <div class="position-details">
+                                Quantity: ${trade.quantity} | Price: ${formatCurrency(trade.price)} | Total: ${formatCurrency(trade.total)}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+        
+        // Load data on page load
+        loadData();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>
+    """
+    return html
 
 def run_flask():
     """Run Flask in a separate thread"""
