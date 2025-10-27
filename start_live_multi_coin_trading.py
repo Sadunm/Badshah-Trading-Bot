@@ -14,6 +14,9 @@ from datetime import datetime
 from threading import Thread
 from flask import Flask, jsonify
 
+# Create logs directory first
+os.makedirs('logs', exist_ok=True)
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
