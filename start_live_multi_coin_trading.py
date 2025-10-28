@@ -838,7 +838,10 @@ class UltimateHybridBot:
                 'confidence': confidence
             }
             
-            # Log trade
+            # Detect market condition at entry
+            market_condition = self.detect_market_condition(symbol)
+            
+            # Log trade with market condition
             trade = {
                 'timestamp': datetime.now(),
                 'symbol': symbol,
@@ -847,7 +850,10 @@ class UltimateHybridBot:
                 'quantity': quantity,
                 'price': exec_price,
                 'fee': fee,
-                'reason': reason
+                'reason': reason,
+                'confidence': confidence,
+                'market_condition': market_condition,
+                'position_key': position_key  # Link to position for history
             }
             self.trades.append(trade)
             
@@ -896,7 +902,13 @@ class UltimateHybridBot:
             total = self.strategy_stats[strategy_name]['trades']
             self.strategy_stats[strategy_name]['win_rate'] = (wins / total * 100) if total > 0 else 0
             
-            # Log close
+            # Detect market condition at exit
+            market_condition_exit = self.detect_market_condition(symbol)
+            
+            # Calculate hold duration
+            hold_duration = (datetime.now() - position['entry_time']).total_seconds() / 60  # minutes
+            
+            # Log close with full details
             trade = {
                 'timestamp': datetime.now(),
                 'symbol': symbol,
@@ -904,10 +916,18 @@ class UltimateHybridBot:
                 'action': 'CLOSE',
                 'quantity': position['quantity'],
                 'price': exec_price,
+                'entry_price': position['entry_price'],
+                'entry_time': position['entry_time'],
+                'entry_reason': position['reason'],
+                'exit_reason': reason,
                 'fee': fee,
                 'pnl': pnl,
                 'pnl_pct': pnl_pct,
-                'reason': reason
+                'hold_duration': hold_duration,
+                'market_condition_exit': market_condition_exit,
+                'stop_loss': position['stop_loss'],
+                'take_profit': position['take_profit'],
+                'position_key': position_key
             }
             self.trades.append(trade)
             
@@ -1187,6 +1207,53 @@ def get_logs():
     except Exception as e:
         return jsonify({'logs': [f'Error reading logs: {str(e)}']})
 
+@app.route('/api/trade-history')
+def get_trade_history():
+    """Get complete trade history with entry/exit pairs"""
+    global trading_bot
+    
+    if not trading_bot:
+        return jsonify({'trades': []})
+    
+    # Get all closed trades (CLOSE actions)
+    closed_trades = [t for t in trading_bot.trades if t.get('action') == 'CLOSE']
+    
+    trade_history = []
+    for close_trade in closed_trades:
+        # Find corresponding entry trade
+        position_key = close_trade.get('position_key', '')
+        entry_trade = next((t for t in trading_bot.trades 
+                          if t.get('position_key') == position_key and t.get('action') != 'CLOSE'), None)
+        
+        trade_record = {
+            'symbol': close_trade['symbol'],
+            'strategy': close_trade['strategy'],
+            'action': entry_trade['action'] if entry_trade else 'BUY',
+            'entry_time': entry_trade['timestamp'].isoformat() if entry_trade else close_trade.get('entry_time', datetime.now()).isoformat(),
+            'exit_time': close_trade['timestamp'].isoformat(),
+            'entry_price': close_trade.get('entry_price', 0),
+            'exit_price': close_trade['price'],
+            'quantity': close_trade['quantity'],
+            'entry_reason': close_trade.get('entry_reason', 'N/A'),
+            'exit_reason': close_trade.get('exit_reason', 'N/A'),
+            'market_condition_entry': entry_trade.get('market_condition', 'Unknown') if entry_trade else 'Unknown',
+            'market_condition_exit': close_trade.get('market_condition_exit', 'Unknown'),
+            'hold_duration': close_trade.get('hold_duration', 0),
+            'pnl': close_trade['pnl'],
+            'pnl_pct': close_trade['pnl_pct'],
+            'fee': close_trade['fee'],
+            'stop_loss': close_trade.get('stop_loss', 0),
+            'take_profit': close_trade.get('take_profit', 0),
+            'confidence': entry_trade.get('confidence', 0) if entry_trade else 0,
+            'is_win': close_trade['pnl'] > 0
+        }
+        
+        trade_history.append(trade_record)
+    
+    # Sort by exit time (most recent first)
+    trade_history.sort(key=lambda x: x['exit_time'], reverse=True)
+    
+    return jsonify({'trades': trade_history})
 @app.route('/api/analytics')
 def get_analytics():
     """Get comprehensive performance analytics"""
@@ -1497,6 +1564,24 @@ def dashboard():
                 background: linear-gradient(135deg, #ef4444, #dc2626);
             }
             
+            .win-badge {
+                padding: 6px 12px;
+                border-radius: 6px;
+                font-size: 0.75em;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+            
+            .win-trade {
+                border-left: 4px solid #10b981 !important;
+                background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(5,150,105,0.05)) !important;
+            }
+            
+            .loss-trade {
+                border-left: 4px solid #ef4444 !important;
+                background: linear-gradient(135deg, rgba(239,68,68,0.1), rgba(220,38,38,0.05)) !important;
+            }
+            
             .strategy-item {
                 display: flex;
                 justify-content: space-between;
@@ -1671,6 +1756,7 @@ def dashboard():
             
             <div class="tabs">
                 <button class="tab-button active" onclick="showTab('positions')">📊 Open Positions</button>
+                <button class="tab-button" onclick="showTab('history')">📜 Trade History</button>
                 <button class="tab-button" onclick="showTab('strategies')">🎯 Strategy Performance</button>
                 <button class="tab-button" onclick="showTab('analytics')">📈 Performance Analytics</button>
                 <button class="tab-button" onclick="showTab('logs')">📝 Live Logs</button>
@@ -1683,6 +1769,16 @@ def dashboard():
                         <span>Open Positions</span>
                     </div>
                     <div id="positions-list"></div>
+                </div>
+            </div>
+            
+            <div id="tab-history" class="tab-content">
+                <div class="section">
+                    <div class="section-title">
+                        <span>📜</span>
+                        <span>Complete Trade History</span>
+                    </div>
+                    <div id="history-list"></div>
                 </div>
             </div>
             
@@ -2066,6 +2162,109 @@ def dashboard():
                     .catch(err => console.error('Error fetching logs:', err));
             }
             
+            function updateHistory() {
+                if (currentTab !== 'history') return;
+                
+                fetch('/api/trade-history')
+                    .then(r => r.json())
+                    .then(data => {
+                        const historyList = document.getElementById('history-list');
+                        historyList.innerHTML = '';
+                        
+                        if (data.trades.length === 0) {
+                            historyList.innerHTML = '<div class="no-data">No closed trades yet... Keep trading! 🚀</div>';
+                            return;
+                        }
+                        
+                        data.trades.forEach(trade => {
+                            const div = document.createElement('div');
+                            div.className = 'position-card ' + (trade.is_win ? 'win-trade' : 'loss-trade');
+                            
+                            const pnlClass = trade.pnl >= 0 ? 'positive' : 'negative';
+                            const actionClass = trade.action === 'BUY' ? 'action-buy' : 'action-sell';
+                            const resultBadge = trade.is_win ? '🎉 WIN' : '❌ LOSS';
+                            
+                            const entryTime = new Date(trade.entry_time);
+                            const exitTime = new Date(trade.exit_time);
+                            const holdHours = (trade.hold_duration / 60).toFixed(1);
+                            
+                            div.innerHTML = `
+                                <div class="position-header">
+                                    <div>
+                                        <span class="position-symbol">${trade.symbol}</span>
+                                        <span class="strategy-badge">${trade.strategy.replace(/_/g, ' ')}</span>
+                                        <span class="action-badge ${actionClass}">${trade.action}</span>
+                                        <span class="win-badge ${pnlClass}">${resultBadge}</span>
+                                    </div>
+                                    <div class="position-pnl ${pnlClass}">
+                                        ${trade.pnl >= 0 ? '+' : ''}${trade.pnl_pct.toFixed(2)}%
+                                        <div style="font-size: 0.8em; margin-top: 4px;">
+                                            ${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div style="margin: 10px 0; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                                    <div style="margin-bottom: 8px;">
+                                        <strong>📌 Entry:</strong> ${trade.entry_reason} 
+                                        <span style="opacity: 0.7;">(${trade.market_condition_entry})</span>
+                                    </div>
+                                    <div>
+                                        <strong>🎯 Exit:</strong> ${trade.exit_reason}
+                                        <span style="opacity: 0.7;">(${trade.market_condition_exit})</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="position-details">
+                                    <div class="detail-item">
+                                        <div class="detail-label">Entry Price</div>
+                                        <div class="detail-value">$${trade.entry_price.toFixed(2)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Exit Price</div>
+                                        <div class="detail-value">$${trade.exit_price.toFixed(2)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Quantity</div>
+                                        <div class="detail-value">${trade.quantity.toFixed(4)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Hold Time</div>
+                                        <div class="detail-value">${holdHours}h</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Entry Time</div>
+                                        <div class="detail-value">${entryTime.toLocaleString()}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Exit Time</div>
+                                        <div class="detail-value">${exitTime.toLocaleString()}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Stop Loss</div>
+                                        <div class="detail-value negative">$${trade.stop_loss.toFixed(2)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Take Profit</div>
+                                        <div class="detail-value positive">$${trade.take_profit.toFixed(2)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Confidence</div>
+                                        <div class="detail-value">${(trade.confidence * 100).toFixed(0)}%</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Fees Paid</div>
+                                        <div class="detail-value">$${trade.fee.toFixed(2)}</div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            historyList.appendChild(div);
+                        });
+                    })
+                    .catch(err => console.error('Error fetching trade history:', err));
+            }
+            
             function updateAnalytics() {
                 if (currentTab !== 'analytics') return;
                 
@@ -2190,6 +2389,7 @@ def dashboard():
             function updateAll() {
                 updateStats();
                 updatePositions();
+                updateHistory();
                 updateLogs();
                 updateAnalytics();
             }
