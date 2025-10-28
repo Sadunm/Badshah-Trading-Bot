@@ -739,6 +739,27 @@ class UltimateHybridBot:
     # MARKET DATA METHODS
     # ========================================================================
     
+    def detect_market_condition(self, symbol):
+        """Detect market condition for a symbol"""
+        try:
+            # Get recent price data
+            data = self.market_data.get(symbol, {})
+            if not data:
+                # Fallback: get fresh data
+                closes, _, _, _, _ = self.get_klines(symbol, '5m', 50)
+                if closes is not None:
+                    return performance_analytics.detect_market_condition(closes)
+                return "UNKNOWN"
+            
+            # Use cached data if available
+            if 'closes' in data:
+                return performance_analytics.detect_market_condition(data['closes'])
+            
+            return "UNKNOWN"
+        except Exception as e:
+            logger.error(f"Error detecting market condition for {symbol}: {e}")
+            return "UNKNOWN"
+    
     def get_current_price(self, symbol):
         """Get current price for a symbol"""
         try:
@@ -908,6 +929,9 @@ class UltimateHybridBot:
                 # Store market data
                 self.market_data[symbol] = {
                     'price': closes[-1],
+                    'closes': closes,  # Store for later market condition detection
+                    'highs': highs,
+                    'lows': lows,
                     'indicators': indicators,
                     'sr_levels': sr_levels,
                     'score': score,
@@ -2883,6 +2907,9 @@ def run_flask():
 
 if __name__ == '__main__':
     try:
+        # Declare globals
+        global trading_bot, trading_stats
+        
         # Test API connection
         logger.info("Testing Binance API connection...")
         test_url = 'https://testnet.binance.vision/api/v3/ping'
