@@ -62,7 +62,9 @@ class MultiCoinTrading:
         self.risk_per_trade = 0.005  # 0.5% per trade (reduced)
         
         logger.info(f"Multi-Coin Trading initialized with ${initial_capital:.2f}")
-        logger.info(f"[STRATEGY] RSI({self.rsi_period}) + EMA({self.ema_fast}/{self.ema_slow}) + SL/TP")
+        logger.info(f"[STRATEGY] 🔥 ADAPTIVE MULTI-STRATEGY SYSTEM - Auto Market Detection")
+        logger.info(f"[INDICATORS] RSI({self.rsi_period}) + EMA({self.ema_fast}/{self.ema_slow}) + ATR + SL/TP")
+        logger.info(f"[STRATEGIES] Scalping | Momentum | Fade | Range | Buy Dips | Adaptive")
         
     def get_current_price(self, symbol):
         """Get current price for a symbol"""
@@ -132,8 +134,56 @@ class MultiCoinTrading:
             logger.error(f"Error calculating EMA: {e}")
             return None, None
     
+    def calculate_volatility(self, closes, highs, lows):
+        """Calculate market volatility (ATR - Average True Range)"""
+        try:
+            if len(closes) < 14:
+                return None
+            atr = talib.ATR(highs, lows, closes, timeperiod=14)
+            # Normalize ATR as % of price
+            volatility_pct = (atr[-1] / closes[-1]) * 100
+            return volatility_pct
+        except Exception as e:
+            logger.error(f"Error calculating volatility: {e}")
+            return None
+    
+    def detect_market_condition(self, closes, highs, lows, rsi, ema_fast, ema_slow):
+        """Detect current market condition for adaptive strategy selection"""
+        try:
+            # Calculate additional metrics
+            volatility = self.calculate_volatility(closes, highs, lows)
+            if volatility is None:
+                return 'UNKNOWN'
+            
+            # Calculate trend strength
+            trend_strength = abs(ema_fast - ema_slow) / ema_slow * 100
+            
+            # Calculate price momentum
+            price_change_5 = (closes[-1] - closes[-5]) / closes[-5] * 100 if len(closes) >= 5 else 0
+            price_change_10 = (closes[-1] - closes[-10]) / closes[-10] * 100 if len(closes) >= 10 else 0
+            
+            # Detect conditions
+            if volatility > 3.0:  # High volatility
+                return 'HIGH_VOLATILITY'
+            elif trend_strength > 2.0 and ema_fast > ema_slow and price_change_10 > 2.0:
+                return 'STRONG_UPTREND'
+            elif trend_strength > 2.0 and ema_fast < ema_slow and price_change_10 < -2.0:
+                return 'STRONG_DOWNTREND'
+            elif trend_strength < 0.5 and 45 <= rsi <= 55:
+                return 'RANGING'
+            elif ema_fast > ema_slow:
+                return 'WEAK_UPTREND'
+            elif ema_fast < ema_slow:
+                return 'WEAK_DOWNTREND'
+            else:
+                return 'NEUTRAL'
+                
+        except Exception as e:
+            logger.error(f"Error detecting market condition: {e}")
+            return 'UNKNOWN'
+    
     def generate_signal(self, symbol):
-        """Generate buy/sell signal based on RSI + EMA strategy (OPTIMIZED v2)"""
+        """🔥 ADAPTIVE MULTI-STRATEGY SYSTEM - Auto detects market & applies best strategy"""
         try:
             # Get historical data
             closes, highs, lows = self.get_historical_data(symbol)
@@ -150,45 +200,76 @@ class MultiCoinTrading:
             current_price = closes[-1]
             prev_price = closes[-2]
             
-            # Trend detection
-            is_uptrend = ema_fast > ema_slow
-            is_downtrend = ema_fast < ema_slow
+            # 🔍 DETECT MARKET CONDITION
+            market_condition = self.detect_market_condition(closes, highs, lows, rsi, ema_fast, ema_slow)
+            
+            # Calculate metrics for strategies
+            price_change_3 = (closes[-1] - closes[-3]) / closes[-3] * 100 if len(closes) >= 3 else 0
             ema_cross_up = closes[-2] < ema_slow and current_price > ema_slow
             ema_cross_down = closes[-2] > ema_fast and current_price < ema_fast
             
-            # **BUY SIGNALS (Multiple Conditions - OR Logic)**
-            buy_conditions = [
-                # 1. RSI Oversold (strong buy)
-                (rsi < self.rsi_oversold, f"RSI Oversold ({rsi:.1f})"),
-                # 2. Price crosses above EMA_slow in uptrend (momentum)
-                (ema_cross_up and is_uptrend, f"EMA Crossover + Uptrend (RSI={rsi:.1f})"),
-                # 3. RSI between 35-45 + strong uptrend (trending buy)
-                (35 <= rsi <= 45 and ema_fast > ema_slow * 1.01, f"Trending Buy (RSI={rsi:.1f})")
-            ]
-            
-            for condition, reason in buy_conditions:
-                if condition:
-                    logger.info(f"[SIGNAL] {symbol} BUY: {reason}, Price=${current_price:.2f}")
+            # 🎯 STRATEGY 1: HIGH VOLATILITY → SCALPING (Quick in/out)
+            if market_condition == 'HIGH_VOLATILITY':
+                # Buy on quick dips, sell on quick pumps
+                if rsi < 45 and price_change_3 < -0.5:
+                    logger.info(f"[SIGNAL] {symbol} BUY: Scalping Dip | Volatility High, RSI={rsi:.1f}, Price=${current_price:.2f}")
                     return 'BUY', current_price
-            
-            # **SELL SIGNALS (Multiple Conditions - OR Logic)**
-            sell_conditions = [
-                # 1. RSI Overbought (strong sell)
-                (rsi > self.rsi_overbought, f"RSI Overbought ({rsi:.1f})"),
-                # 2. Price crosses below EMA_fast in downtrend (momentum)
-                (ema_cross_down and is_downtrend, f"EMA Crossover + Downtrend (RSI={rsi:.1f})"),
-                # 3. RSI between 55-65 + strong downtrend (trending sell)
-                (55 <= rsi <= 65 and ema_fast < ema_slow * 0.99, f"Trending Sell (RSI={rsi:.1f})")
-            ]
-            
-            for condition, reason in sell_conditions:
-                if condition:
-                    logger.info(f"[SIGNAL] {symbol} SELL: {reason}, Price=${current_price:.2f}")
+                elif rsi > 55 and price_change_3 > 0.5:
+                    logger.info(f"[SIGNAL] {symbol} SELL: Scalping Pump | Volatility High, RSI={rsi:.1f}, Price=${current_price:.2f}")
                     return 'SELL', current_price
             
-            # Debug: Log indicators even when no signal
-            trend = "UPTREND" if is_uptrend else "DOWNTREND" if is_downtrend else "NEUTRAL"
-            logger.info(f"[{symbol}] No signal - RSI={rsi:.1f}, {trend}, EMA_fast=${ema_fast:.2f}, EMA_slow=${ema_slow:.2f}")
+            # 🎯 STRATEGY 2: STRONG UPTREND → MOMENTUM + BUY DIPS
+            elif market_condition == 'STRONG_UPTREND':
+                # Buy dips in uptrend OR momentum continuation
+                if rsi < 50 or ema_cross_up:
+                    reason = f"Momentum/Dip Buy | Strong Uptrend, RSI={rsi:.1f}"
+                    logger.info(f"[SIGNAL] {symbol} BUY: {reason}, Price=${current_price:.2f}")
+                    return 'BUY', current_price
+                elif rsi > 70:  # Only sell if extremely overbought
+                    logger.info(f"[SIGNAL] {symbol} SELL: Extreme Overbought | RSI={rsi:.1f}, Price=${current_price:.2f}")
+                    return 'SELL', current_price
+            
+            # 🎯 STRATEGY 3: STRONG DOWNTREND → FADE/REVERSE (Sell rallies)
+            elif market_condition == 'STRONG_DOWNTREND':
+                # Sell rallies in downtrend OR momentum continuation
+                if rsi > 50 or ema_cross_down:
+                    reason = f"Fade Rally | Strong Downtrend, RSI={rsi:.1f}"
+                    logger.info(f"[SIGNAL] {symbol} SELL: {reason}, Price=${current_price:.2f}")
+                    return 'SELL', current_price
+                elif rsi < 30:  # Only buy if extremely oversold
+                    logger.info(f"[SIGNAL] {symbol} BUY: Extreme Oversold | RSI={rsi:.1f}, Price=${current_price:.2f}")
+                    return 'BUY', current_price
+            
+            # 🎯 STRATEGY 4: RANGING → RANGE TRADING (Buy low, sell high)
+            elif market_condition == 'RANGING':
+                # Buy at bottom of range, sell at top
+                if rsi < 40:
+                    logger.info(f"[SIGNAL] {symbol} BUY: Range Bottom | RSI={rsi:.1f}, Price=${current_price:.2f}")
+                    return 'BUY', current_price
+                elif rsi > 60:
+                    logger.info(f"[SIGNAL] {symbol} SELL: Range Top | RSI={rsi:.1f}, Price=${current_price:.2f}")
+                    return 'SELL', current_price
+            
+            # 🎯 STRATEGY 5: WEAK UPTREND → MODERATE MOMENTUM
+            elif market_condition == 'WEAK_UPTREND':
+                if rsi < 45:
+                    logger.info(f"[SIGNAL] {symbol} BUY: Weak Uptrend Dip | RSI={rsi:.1f}, Price=${current_price:.2f}")
+                    return 'BUY', current_price
+                elif rsi > 65:
+                    logger.info(f"[SIGNAL] {symbol} SELL: Overbought | RSI={rsi:.1f}, Price=${current_price:.2f}")
+                    return 'SELL', current_price
+            
+            # 🎯 STRATEGY 6: WEAK DOWNTREND → CAREFUL TRADING
+            elif market_condition == 'WEAK_DOWNTREND':
+                if rsi < 35:
+                    logger.info(f"[SIGNAL] {symbol} BUY: Oversold Bounce | RSI={rsi:.1f}, Price=${current_price:.2f}")
+                    return 'BUY', current_price
+                elif rsi > 55:
+                    logger.info(f"[SIGNAL] {symbol} SELL: Weak Downtrend Rally | RSI={rsi:.1f}, Price=${current_price:.2f}")
+                    return 'SELL', current_price
+            
+            # Debug: Log market condition
+            logger.info(f"[{symbol}] No signal | Market: {market_condition}, RSI={rsi:.1f}, Price=${current_price:.2f}")
             
             return None, current_price
             
