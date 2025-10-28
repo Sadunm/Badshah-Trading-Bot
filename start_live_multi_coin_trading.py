@@ -334,34 +334,46 @@ STRATEGIES = {
 
 # Coin universe to scan
 COIN_UNIVERSE = [
-    # 🔥 HIGH VOLATILITY COINS for SHARP MOVEMENTS & QUICK PROFITS! 🔥
-    # Major pairs with excellent liquidity + volatility
-    'BTCUSDT',    # King - always volatile
-    'ETHUSDT',    # High vol + good liquidity
+    # 🔥 TIER 1: MAXIMUM LIQUIDITY + HIGH VOLATILITY 🔥
+    'BTCUSDT',    # King - always volatile, best liquidity
+    'ETHUSDT',    # High vol + excellent liquidity
     'BNBUSDT',    # Exchange token - sharp moves
-    'SOLUSDT',    # Very volatile, fast moves
+    'SOLUSDT',    # Extremely volatile, fast moves
+    'XRPUSDT',    # High liquidity + sharp swings
     
-    # High volatility altcoins
-    'LINKUSDT',   # Oracle - volatile & liquid
-    'UNIUSDT',    # DeFi leader - sharp pumps
+    # 🚀 TIER 2: EXTREME VOLATILITY ALTCOINS 🚀
+    'LINKUSDT',   # Oracle leader - volatile & liquid
     'AVAXUSDT',   # L1 - excellent volatility
-    'DOTUSDT',    # Polkadot - good swings
-    
-    # Extreme movers
-    'ATOMUSDT',   # Cosmos - volatile trends
-    'MATICUSDT',  # Polygon - fast moves
-    'LTCUSDT',    # Silver to Bitcoin - sharp
+    'UNIUSDT',    # DeFi - sharp pumps/dumps
     'NEARUSDT',   # Layer-1 - high volatility
+    'INJUSDT',    # DeFi high-flyer - extreme moves
+    'APTUSDT',    # New L1 - very volatile
+    'ARBUSDT',    # L2 leader - sharp moves
+    'OPUSDT',     # L2 - high volatility
     
-    # Meme + volatile picks
+    # 💎 TIER 3: PROVEN ALTCOINS WITH SHARP MOVES 💎
+    'ADAUSDT',    # Cardano - good swings
+    'ATOMUSDT',   # Cosmos - volatile trends
+    'TRXUSDT',    # High volume - fast moves
+    'WLDUSDT',    # AI hype - extreme volatility
+    
+    # 🐕 TIER 4: MEME COINS - INSANE VOLATILITY! 🐕
     'DOGEUSDT',   # Meme king - extreme volatility
-    'SHIBUSDT',   # Meme - sharp moves
-    'PEPEUSDT',   # New meme - insane volatility
-    'FLOKIUSDT'   # Meme - fast pumps
+    'SHIBUSDT',   # Meme giant - sharp moves
+    'PEPEUSDT',   # Viral meme - insane volatility
+    'FLOKIUSDT',  # Meme runner - fast pumps
+    '1000BONKUSDT', # Bonk meme - explosive moves
 ]
 
-# Note: All coins selected for MAXIMUM VOLATILITY + Binance availability
-# Focus: Sharp movements, quick entries/exits, high profit potential! 💰
+# 📊 SELECTION CRITERIA:
+# ✅ High daily volatility (3%+ average)
+# ✅ Excellent liquidity (easy entry/exit)
+# ✅ Sharp price movements (fast profits)
+# ✅ Proven track record on Binance
+# ✅ Active trading volume
+# 
+# ❌ REMOVED: DOT, MATIC, LTC (too slow for our strategy)
+# 🎯 FOCUS: Maximum profit potential with quick trades!
 
 # ============================================================================
 # MAIN TRADING CLASS
