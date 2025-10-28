@@ -133,7 +133,7 @@ class MultiCoinTrading:
             return None, None
     
     def generate_signal(self, symbol):
-        """Generate buy/sell signal based on RSI + EMA strategy"""
+        """Generate buy/sell signal based on RSI + EMA strategy (OPTIMIZED v2)"""
         try:
             # Get historical data
             closes, highs, lows = self.get_historical_data(symbol)
@@ -148,16 +148,47 @@ class MultiCoinTrading:
                 return None, None
             
             current_price = closes[-1]
+            prev_price = closes[-2]
             
-            # BUY Signal: RSI oversold + EMA fast > EMA slow (uptrend)
-            if rsi < self.rsi_oversold and ema_fast > ema_slow:
-                logger.info(f"[SIGNAL] {symbol} BUY: RSI={rsi:.1f}, EMA_fast={ema_fast:.2f} > EMA_slow={ema_slow:.2f}")
-                return 'BUY', current_price
+            # Trend detection
+            is_uptrend = ema_fast > ema_slow
+            is_downtrend = ema_fast < ema_slow
+            ema_cross_up = closes[-2] < ema_slow and current_price > ema_slow
+            ema_cross_down = closes[-2] > ema_fast and current_price < ema_fast
             
-            # SELL Signal: RSI overbought + EMA fast < EMA slow (downtrend)
-            elif rsi > self.rsi_overbought and ema_fast < ema_slow:
-                logger.info(f"[SIGNAL] {symbol} SELL: RSI={rsi:.1f}, EMA_fast={ema_fast:.2f} < EMA_slow={ema_slow:.2f}")
-                return 'SELL', current_price
+            # **BUY SIGNALS (Multiple Conditions - OR Logic)**
+            buy_conditions = [
+                # 1. RSI Oversold (strong buy)
+                (rsi < self.rsi_oversold, f"RSI Oversold ({rsi:.1f})"),
+                # 2. Price crosses above EMA_slow in uptrend (momentum)
+                (ema_cross_up and is_uptrend, f"EMA Crossover + Uptrend (RSI={rsi:.1f})"),
+                # 3. RSI between 35-45 + strong uptrend (trending buy)
+                (35 <= rsi <= 45 and ema_fast > ema_slow * 1.01, f"Trending Buy (RSI={rsi:.1f})")
+            ]
+            
+            for condition, reason in buy_conditions:
+                if condition:
+                    logger.info(f"[SIGNAL] {symbol} BUY: {reason}, Price=${current_price:.2f}")
+                    return 'BUY', current_price
+            
+            # **SELL SIGNALS (Multiple Conditions - OR Logic)**
+            sell_conditions = [
+                # 1. RSI Overbought (strong sell)
+                (rsi > self.rsi_overbought, f"RSI Overbought ({rsi:.1f})"),
+                # 2. Price crosses below EMA_fast in downtrend (momentum)
+                (ema_cross_down and is_downtrend, f"EMA Crossover + Downtrend (RSI={rsi:.1f})"),
+                # 3. RSI between 55-65 + strong downtrend (trending sell)
+                (55 <= rsi <= 65 and ema_fast < ema_slow * 0.99, f"Trending Sell (RSI={rsi:.1f})")
+            ]
+            
+            for condition, reason in sell_conditions:
+                if condition:
+                    logger.info(f"[SIGNAL] {symbol} SELL: {reason}, Price=${current_price:.2f}")
+                    return 'SELL', current_price
+            
+            # Debug: Log indicators even when no signal
+            trend = "UPTREND" if is_uptrend else "DOWNTREND" if is_downtrend else "NEUTRAL"
+            logger.info(f"[{symbol}] No signal - RSI={rsi:.1f}, {trend}, EMA_fast=${ema_fast:.2f}, EMA_slow=${ema_slow:.2f}")
             
             return None, current_price
             
@@ -474,10 +505,10 @@ class MultiCoinTrading:
                 logger.info("")
                 self.print_status(prices)
                 
-                # Wait before next cycle (increased to 2 minutes for better signals)
+                # Wait before next cycle (1 minute for more frequent signals)
                 if cycle < cycles:
-                    logger.info(f"\n[WAIT] Waiting 2 minutes...\n")
-                    time.sleep(120)
+                    logger.info(f"\n[WAIT] Waiting 1 minute...\n")
+                    time.sleep(60)
             
             # Final summary
             logger.info(f"\n{'='*70}")
