@@ -1618,10 +1618,35 @@ def dashboard():
     <body>
         <div class="container">
             <header>
-                <h1>🔥 BADSHAH TRADING BOT 🔥</h1>
-                <div class="subtitle">Multi-Strategy • Multi-Timeframe • Multi-Coin</div>
-                <div style="margin-top: 10px; font-size: 0.9em; opacity: 0.8; font-style: italic;">
-                    Created by <strong style="color: #fbbf24;">Automator Abdullah Bukhari</strong>
+                <div style="
+                    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+                    padding: 30px;
+                    border-radius: 20px;
+                    border: 3px solid rgba(251, 191, 36, 0.5);
+                    box-shadow: 0 8px 32px rgba(251, 191, 36, 0.3);
+                    margin-bottom: 30px;
+                ">
+                    <h1 style="font-size: 3em; margin-bottom: 15px;">🔥 BADSHAH TRADING BOT 🔥</h1>
+                    <div class="subtitle" style="font-size: 1.2em; margin-bottom: 20px;">Multi-Strategy • Multi-Timeframe • Multi-Coin</div>
+                    <div style="
+                        margin-top: 20px;
+                        padding-top: 20px;
+                        border-top: 2px solid rgba(251, 191, 36, 0.3);
+                    ">
+                        <div style="font-size: 1.1em; margin-bottom: 8px; color: #e0e0e0;">
+                            ⚡ Powered by Advanced AI & Professional Trading System ⚡
+                        </div>
+                        <div style="font-size: 1.4em; font-weight: bold;">
+                            Created by <span style="
+                                color: #fbbf24;
+                                text-shadow: 0 0 20px rgba(251, 191, 36, 0.8);
+                                padding: 5px 15px;
+                                background: rgba(251, 191, 36, 0.1);
+                                border-radius: 8px;
+                                border: 2px solid rgba(251, 191, 36, 0.3);
+                            ">Automator Abdullah Bukhari</span>
+                        </div>
+                    </div>
                 </div>
             </header>
             
@@ -1742,32 +1767,90 @@ def dashboard():
             
             <!-- Creator Footer -->
             <div style="
-                margin-top: 30px;
-                padding: 25px;
-                background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
-                border-radius: 15px;
-                border: 2px solid rgba(59, 130, 246, 0.3);
+                margin-top: 40px;
+                padding: 40px;
+                background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%);
+                border-radius: 20px;
+                border: 3px solid rgba(251, 191, 36, 0.6);
                 text-align: center;
-                box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
+                box-shadow: 0 8px 40px rgba(251, 191, 36, 0.4), 0 0 80px rgba(59, 130, 246, 0.3);
+                position: relative;
+                overflow: hidden;
             ">
-                <div style="font-size: 1.8em; font-weight: bold; margin-bottom: 10px; 
-                    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #fbbf24);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    background-clip: text;
-                    animation: gradient 3s ease infinite;
-                    background-size: 200% 200%;
-                ">
-                    🚀 BADSHAH TRADING BOT 🚀
-                </div>
-                <div style="font-size: 1.2em; margin-bottom: 5px; color: #e0e0e0;">
-                    Powered by Advanced AI & Multi-Strategy System
-                </div>
-                <div style="font-size: 1em; opacity: 0.9; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
-                    ⚡ Created by <strong style="color: #fbbf24; font-size: 1.2em;">Automator Abdullah Bukhari</strong> ⚡
-                </div>
-                <div style="font-size: 0.85em; margin-top: 8px; opacity: 0.7;">
-                    Professional Trading Automation • Risk Management • Real-Time Analytics
+                <!-- Animated background -->
+                <div style="
+                    position: absolute;
+                    top: -50%;
+                    left: -50%;
+                    width: 200%;
+                    height: 200%;
+                    background: linear-gradient(45deg, transparent, rgba(251, 191, 36, 0.1), transparent);
+                    animation: rotate 8s linear infinite;
+                "></div>
+                
+                <div style="position: relative; z-index: 1;">
+                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 20px; 
+                        background: linear-gradient(90deg, #3b82f6, #8b5cf6, #fbbf24, #3b82f6);
+                        -webkit-background-clip: text;
+                        -webkit-text-fill-color: transparent;
+                        background-clip: text;
+                        animation: gradient 4s ease infinite;
+                        background-size: 300% 300%;
+                        text-shadow: 0 0 30px rgba(251, 191, 36, 0.5);
+                    ">
+                        🔥 BADSHAH TRADING BOT 🔥
+                    </div>
+                    
+                    <div style="
+                        font-size: 1.3em;
+                        margin: 25px 0;
+                        padding: 20px;
+                        background: rgba(0, 0, 0, 0.3);
+                        border-radius: 15px;
+                        border: 2px solid rgba(251, 191, 36, 0.3);
+                    ">
+                        <div style="font-size: 1.1em; margin-bottom: 10px; color: #e0e0e0;">
+                            ⚡ Powered by Advanced AI & Multi-Strategy System ⚡
+                        </div>
+                        <div style="font-size: 0.9em; opacity: 0.8; color: #cbd5e1;">
+                            Professional Trading Automation • Risk Management • Real-Time Analytics
+                        </div>
+                    </div>
+                    
+                    <div style="
+                        margin-top: 30px;
+                        padding: 25px;
+                        background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0.1));
+                        border-radius: 15px;
+                        border: 3px solid rgba(251, 191, 36, 0.5);
+                        box-shadow: 0 0 30px rgba(251, 191, 36, 0.3);
+                    ">
+                        <div style="font-size: 1.1em; margin-bottom: 12px; color: #e0e0e0;">
+                            ⚡ Created by ⚡
+                        </div>
+                        <div style="
+                            font-size: 2em;
+                            font-weight: bold;
+                            color: #fbbf24;
+                            text-shadow: 
+                                0 0 10px rgba(251, 191, 36, 1),
+                                0 0 20px rgba(251, 191, 36, 0.8),
+                                0 0 30px rgba(251, 191, 36, 0.6),
+                                0 0 40px rgba(251, 191, 36, 0.4);
+                            letter-spacing: 2px;
+                            animation: glow 2s ease-in-out infinite alternate;
+                        ">
+                            AUTOMATOR ABDULLAH BUKHARI
+                        </div>
+                        <div style="
+                            margin-top: 15px;
+                            font-size: 1.1em;
+                            color: #cbd5e1;
+                            font-style: italic;
+                        ">
+                            🏆 Professional Trading System Developer 🏆
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1777,6 +1860,29 @@ def dashboard():
                 0% { background-position: 0% 50%; }
                 50% { background-position: 100% 50%; }
                 100% { background-position: 0% 50%; }
+            }
+            
+            @keyframes glow {
+                0% {
+                    text-shadow: 
+                        0 0 10px rgba(251, 191, 36, 1),
+                        0 0 20px rgba(251, 191, 36, 0.8),
+                        0 0 30px rgba(251, 191, 36, 0.6),
+                        0 0 40px rgba(251, 191, 36, 0.4);
+                }
+                100% {
+                    text-shadow: 
+                        0 0 20px rgba(251, 191, 36, 1),
+                        0 0 30px rgba(251, 191, 36, 0.9),
+                        0 0 40px rgba(251, 191, 36, 0.7),
+                        0 0 50px rgba(251, 191, 36, 0.5),
+                        0 0 60px rgba(251, 191, 36, 0.3);
+                }
+            }
+            
+            @keyframes rotate {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
             }
         </style>
         
