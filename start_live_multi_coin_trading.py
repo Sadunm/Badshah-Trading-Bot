@@ -12,13 +12,15 @@ import json
 import logging
 import numpy as np
 import talib
+import csv
 from datetime import datetime, timedelta
 from threading import Thread
 from flask import Flask, jsonify, render_template_string
 from collections import defaultdict
 
-# Create logs directory first
+# Create necessary directories
 os.makedirs('logs', exist_ok=True)
+os.makedirs('data', exist_ok=True)
 
 # Setup logging
 logging.basicConfig(
@@ -332,11 +334,34 @@ STRATEGIES = {
 
 # Coin universe to scan
 COIN_UNIVERSE = [
-    'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 
-    'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'DOTUSDT',
-    'MATICUSDT', 'LTCUSDT', 'AVAXUSDT', 'LINKUSDT',
-    'UNIUSDT', 'ATOMUSDT', 'ETCUSDT', 'XLMUSDT'
+    # 🔥 HIGH VOLATILITY COINS for SHARP MOVEMENTS & QUICK PROFITS! 🔥
+    # Major pairs with excellent liquidity + volatility
+    'BTCUSDT',    # King - always volatile
+    'ETHUSDT',    # High vol + good liquidity
+    'BNBUSDT',    # Exchange token - sharp moves
+    'SOLUSDT',    # Very volatile, fast moves
+    
+    # High volatility altcoins
+    'LINKUSDT',   # Oracle - volatile & liquid
+    'UNIUSDT',    # DeFi leader - sharp pumps
+    'AVAXUSDT',   # L1 - excellent volatility
+    'DOTUSDT',    # Polkadot - good swings
+    
+    # Extreme movers
+    'ATOMUSDT',   # Cosmos - volatile trends
+    'MATICUSDT',  # Polygon - fast moves
+    'LTCUSDT',    # Silver to Bitcoin - sharp
+    'NEARUSDT',   # Layer-1 - high volatility
+    
+    # Meme + volatile picks
+    'DOGEUSDT',   # Meme king - extreme volatility
+    'SHIBUSDT',   # Meme - sharp moves
+    'PEPEUSDT',   # New meme - insane volatility
+    'FLOKIUSDT'   # Meme - fast pumps
 ]
+
+# Note: All coins selected for MAXIMUM VOLATILITY + Binance availability
+# Focus: Sharp movements, quick entries/exits, high profit potential! 💰
 
 # ============================================================================
 # MAIN TRADING CLASS
@@ -372,12 +397,338 @@ class UltimateHybridBot:
             'profit': 0, 'win_rate': 0
         })
         
+        # Performance Analytics
+        self.analytics = PerformanceAnalytics()
+        
+        # Data Persistence
+        self.csv_file = 'data/trade_history.csv'
+        self.load_trade_history()
+        
         logger.info(f"🔥 ULTIMATE HYBRID BOT INITIALIZED")
         logger.info(f"💰 Capital: ${initial_capital:.2f}")
         logger.info(f"📊 Strategies: {len(STRATEGIES)}")
         logger.info(f"🪙 Coins: {len(COIN_UNIVERSE)}")
         logger.info(f"✅ Multi-Strategy | Multi-Timeframe | Multi-Coin")
         
+    # ========================================================================
+    # DATA PERSISTENCE METHODS
+    # ========================================================================
+    
+    def load_trade_history(self):
+        """Load trade history from CSV"""
+        try:
+            if os.path.exists(self.csv_file):
+                with open(self.csv_file, 'r', newline='', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        self.trades.append(row)
+                logger.info(f"✅ Loaded {len(self.trades)} historical trades")
+        except Exception as e:
+            logger.error(f"Error loading trade history: {e}")
+    
+    def save_trade_to_csv(self, trade):
+        """Save a single trade to CSV"""
+        try:
+            file_exists = os.path.exists(self.csv_file)
+            
+            with open(self.csv_file, 'a', newline='', encoding='utf-8') as f:
+                fieldnames = ['timestamp', 'symbol', 'strategy', 'action', 'entry_price', 
+                              'exit_price', 'quantity', 'pnl', 'pnl_pct', 'fees', 
+                              'entry_reason', 'exit_reason', 'confidence', 
+                              'entry_market_condition', 'exit_market_condition', 
+                              'hold_duration_hours', 'stop_loss', 'take_profit']
+                
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                
+                if not file_exists:
+                    writer.writeheader()
+                
+                writer.writerow(trade)
+        except Exception as e:
+            logger.error(f"Error saving trade to CSV: {e}")
+    
+    # ========================================================================
+    # SMART CONFIDENCE CALCULATOR
+    # ========================================================================
+    
+    def calculate_target_confidence(self, symbol, current_price, entry_price, target_price, strategy):
+        """
+        Calculate probability (0-100%) that take profit target will be reached
+        Decision threshold: 80% = WAIT for target, <80% = LOCK profit now
+        """
+        try:
+            score = 0
+            details = {}
+            
+            # Get latest market data
+            data = self.market_data.get(symbol, {})
+            if not data:
+                return 50, {}  # Neutral if no data
+            
+            ind = data.get('indicators', {})
+            
+            # Factor 1: Current Progress to Target (25 points)
+            current_gain = abs((current_price - entry_price) / entry_price * 100)
+            target_gain = abs((target_price - entry_price) / entry_price * 100)
+            progress = (current_gain / target_gain) if target_gain > 0 else 0
+            
+            if progress >= 0.75:
+                score += 25  # Almost there!
+            elif progress >= 0.50:
+                score += 15  # Halfway
+            elif progress >= 0.25:
+                score += 8
+            else:
+                score += 3  # Just started
+            details['progress'] = f"{progress*100:.1f}%"
+            
+            # Factor 2: Momentum Strength (25 points)
+            momentum_3 = ind.get('momentum_3', 0)
+            momentum_10 = ind.get('momentum_10', 0)
+            
+            if strategy == 'BUY':
+                if momentum_10 > 2 and momentum_3 > 0:
+                    score += 25
+                elif momentum_10 > 1:
+                    score += 15
+                elif momentum_10 > 0:
+                    score += 8
+            else:  # SELL
+                if momentum_10 < -2 and momentum_3 < 0:
+                    score += 25
+                elif momentum_10 < -1:
+                    score += 15
+                elif momentum_10 < 0:
+                    score += 8
+            details['momentum'] = f"{momentum_10:.2f}"
+            
+            # Factor 3: Volume Trend (20 points)
+            volume_ratio = ind.get('volume_ratio', 1.0)
+            if volume_ratio > 1.5:
+                score += 20  # High volume = strong move
+            elif volume_ratio > 1.2:
+                score += 12
+            elif volume_ratio > 0.8:
+                score += 5
+            details['volume'] = f"{volume_ratio:.2f}x"
+            
+            # Factor 4: Trend Alignment (20 points)
+            ema_9 = ind.get('ema_9', current_price)
+            ema_21 = ind.get('ema_21', current_price)
+            ema_50 = ind.get('ema_50', current_price)
+            
+            if strategy == 'BUY':
+                if ema_9 > ema_21 > ema_50:
+                    score += 20  # Perfect alignment
+                elif ema_9 > ema_21:
+                    score += 10
+                else:
+                    score += 3
+            else:  # SELL
+                if ema_9 < ema_21 < ema_50:
+                    score += 20
+                elif ema_9 < ema_21:
+                    score += 10
+                else:
+                    score += 3
+            details['trend'] = 'Aligned' if score >= 15 else 'Weak'
+            
+            # Factor 5: RSI Sustainability (10 points)
+            rsi = ind.get('rsi', 50)
+            if strategy == 'BUY':
+                if 40 < rsi < 70:  # Sustainable uptrend
+                    score += 10
+                elif rsi < 75:
+                    score += 5
+            else:  # SELL
+                if 30 < rsi < 60:  # Sustainable downtrend
+                    score += 10
+                elif rsi > 25:
+                    score += 5
+            details['rsi'] = f"{rsi:.1f}"
+            
+            confidence = min(100, max(0, score))
+            return confidence, details
+            
+        except Exception as e:
+            logger.error(f"Error calculating confidence: {e}")
+            return 50, {}
+    
+    # ========================================================================
+    # ADVANCED ENTRY VALIDATORS & ENHANCEMENTS
+    # ========================================================================
+    
+    def detect_volume_spike(self, symbol):
+        """Detect unusual volume spikes (whale activity, breakouts)"""
+        try:
+            closes, highs, lows, volumes, opens = self.get_klines(symbol, '15m', 50)
+            if volumes is None:
+                return False, 1.0
+            
+            current_volume = volumes[-1]
+            avg_volume = np.mean(volumes[-20:-1])  # Last 20 candles avg
+            
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Volume spike = 2x+ average volume
+            if volume_ratio >= 2.0:
+                return True, volume_ratio
+            
+            return False, volume_ratio
+        except:
+            return False, 1.0
+    
+    def detect_price_breakout(self, symbol):
+        """Detect breakouts from consolidation (high probability moves)"""
+        try:
+            closes, highs, lows, volumes, opens = self.get_klines(symbol, '1h', 100)
+            if closes is None:
+                return None
+            
+            current_price = closes[-1]
+            
+            # Calculate recent range (last 20 candles)
+            recent_high = np.max(highs[-20:])
+            recent_low = np.min(lows[-20:])
+            range_size = (recent_high - recent_low) / recent_low * 100
+            
+            # Consolidation = tight range (<3%)
+            if range_size < 3.0:
+                # Check if breaking out
+                if current_price >= recent_high * 1.002:  # Breaking above
+                    return {'type': 'BULLISH_BREAKOUT', 'strength': 'HIGH'}
+                elif current_price <= recent_low * 0.998:  # Breaking below
+                    return {'type': 'BEARISH_BREAKOUT', 'strength': 'HIGH'}
+            
+            return None
+        except:
+            return None
+    
+    def calculate_volatility_adjusted_size(self, symbol, base_capital):
+        """Adjust position size based on volatility (higher vol = smaller size)"""
+        try:
+            data = self.market_data.get(symbol, {})
+            ind = data.get('indicators', {})
+            
+            atr_pct = ind.get('atr_pct', 2.0)
+            
+            # Inverse relationship: high volatility = smaller position
+            if atr_pct > 5.0:
+                multiplier = 0.6  # Very volatile, reduce size
+            elif atr_pct > 3.0:
+                multiplier = 0.8  # Moderate vol
+            elif atr_pct > 1.5:
+                multiplier = 1.0  # Normal vol
+            else:
+                multiplier = 1.2  # Low vol, can increase size
+            
+            adjusted_capital = base_capital * multiplier
+            return adjusted_capital
+        except:
+            return base_capital
+    
+    def validate_volume_confirmation(self, symbol, action):
+        """Ensure trade has volume support (avoid fake moves)"""
+        try:
+            data = self.market_data.get(symbol, {})
+            ind = data.get('indicators', {})
+            
+            volume_ratio = ind.get('volume_ratio', 1.0)
+            
+            # Require at least 0.8x average volume minimum
+            if volume_ratio < 0.8:
+                return False, "Low volume"
+            
+            # Bonus points for volume spikes
+            if volume_ratio >= 1.5:
+                return True, f"Strong volume! ({volume_ratio:.2f}x)"
+            
+            return True, f"Volume OK ({volume_ratio:.2f}x)"
+        except:
+            return True, "No volume data"
+    
+    def detect_candlestick_patterns(self, symbol):
+        """Detect bullish/bearish candlestick patterns"""
+        try:
+            closes, highs, lows, volumes, opens = self.get_klines(symbol, '15m', 10)
+            if closes is None:
+                return None
+            
+            patterns = {}
+            
+            # Bullish Engulfing
+            bullish_engulfing = talib.CDLENGULFING(opens, highs, lows, closes)
+            if bullish_engulfing[-1] > 0:
+                patterns['bullish_engulfing'] = True
+            
+            # Hammer
+            hammer = talib.CDLHAMMER(opens, highs, lows, closes)
+            if hammer[-1] > 0:
+                patterns['hammer'] = True
+            
+            # Morning Star
+            morning_star = talib.CDLMORNINGSTAR(opens, highs, lows, closes)
+            if morning_star[-1] > 0:
+                patterns['morning_star'] = True
+            
+            # Bearish Engulfing
+            bearish_engulfing = talib.CDLENGULFING(opens, highs, lows, closes)
+            if bearish_engulfing[-1] < 0:
+                patterns['bearish_engulfing'] = True
+            
+            # Shooting Star
+            shooting_star = talib.CDLSHOOTINGSTAR(opens, highs, lows, closes)
+            if shooting_star[-1] > 0:
+                patterns['shooting_star'] = True
+            
+            # Evening Star
+            evening_star = talib.CDLEVENINGSTAR(opens, highs, lows, closes)
+            if evening_star[-1] > 0:
+                patterns['evening_star'] = True
+            
+            return patterns
+        except Exception as e:
+            return None
+    
+    def check_multi_timeframe_alignment(self, symbol, action):
+        """Check if multiple timeframes agree on direction"""
+        try:
+            alignments = {}
+            timeframes = ['15m', '1h', '4h']
+            
+            for tf in timeframes:
+                closes, highs, lows, volumes, opens = self.get_klines(symbol, tf, 50)
+                if closes is None:
+                    continue
+                
+                ema_9 = talib.EMA(closes, 9)[-1]
+                ema_21 = talib.EMA(closes, 21)[-1]
+                
+                if action == 'BUY':
+                    alignments[tf] = ema_9 > ema_21
+                else:
+                    alignments[tf] = ema_9 < ema_21
+            
+            # At least 2 out of 3 timeframes should agree
+            agreement = sum(alignments.values()) >= 2
+            return agreement, alignments
+        except:
+            return True, {}  # Don't block if check fails
+    
+    def calculate_risk_reward_ratio(self, entry_price, stop_loss, take_profit):
+        """Calculate risk/reward ratio - should be at least 1:2"""
+        try:
+            risk = abs(entry_price - stop_loss)
+            reward = abs(take_profit - entry_price)
+            
+            if risk == 0:
+                return 0
+            
+            ratio = reward / risk
+            return ratio
+        except:
+            return 0
+    
     # ========================================================================
     # MARKET DATA METHODS
     # ========================================================================
@@ -824,6 +1175,9 @@ class UltimateHybridBot:
             self.current_capital -= total_cost
             self.reserved_capital += position_value
             
+            # Detect market condition at entry
+            market_condition = self.detect_market_condition(symbol)
+            
             # Create position
             self.positions[position_key] = {
                 'symbol': symbol,
@@ -835,11 +1189,10 @@ class UltimateHybridBot:
                 'stop_loss': exec_price * (1 - strategy['stop_loss']) if action == 'BUY' else exec_price * (1 + strategy['stop_loss']),
                 'take_profit': exec_price * (1 + strategy['take_profit']) if action == 'BUY' else exec_price * (1 - strategy['take_profit']),
                 'reason': reason,
-                'confidence': confidence
+                'confidence': confidence,
+                'market_condition': market_condition,
+                'target_confidence': None  # Will be calculated when in profit
             }
-            
-            # Detect market condition at entry
-            market_condition = self.detect_market_condition(symbol)
             
             # Log trade with market condition
             trade = {
@@ -933,8 +1286,31 @@ class UltimateHybridBot:
             
             # Update analytics
             date_str = datetime.now().strftime('%Y-%m-%d')
-            performance_analytics.update_daily_stats(date_str, pnl, self.current_capital + self.reserved_capital)
-            performance_analytics.update_drawdown(self.current_capital + self.reserved_capital)
+            self.analytics.update_daily_stats(date_str, pnl, self.current_capital + self.reserved_capital)
+            self.analytics.update_drawdown(self.current_capital + self.reserved_capital)
+            
+            # Save to CSV for persistence
+            csv_trade = {
+                'timestamp': datetime.now().isoformat(),
+                'symbol': symbol,
+                'strategy': strategy_name,
+                'action': position['action'],
+                'entry_price': f"{position['entry_price']:.8f}",
+                'exit_price': f"{exec_price:.8f}",
+                'quantity': f"{position['quantity']:.8f}",
+                'pnl': f"{pnl:.4f}",
+                'pnl_pct': f"{pnl_pct:.4f}",
+                'fees': f"{fee:.4f}",
+                'entry_reason': position['reason'],
+                'exit_reason': reason,
+                'confidence': position['confidence'],
+                'entry_market_condition': position.get('market_condition', 'N/A'),
+                'exit_market_condition': market_condition_exit,
+                'hold_duration_hours': f"{hold_duration/60:.2f}",
+                'stop_loss': f"{position['stop_loss']:.8f}",
+                'take_profit': f"{position['take_profit']:.8f}"
+            }
+            self.save_trade_to_csv(csv_trade)
             
             hold_time = (datetime.now() - position['entry_time']).total_seconds() / 60
             
@@ -965,6 +1341,42 @@ class UltimateHybridBot:
                 if current_price is None:
                     continue
                 
+                # ==================================================================
+                # SMART CONFIDENCE-BASED EXIT (Priority #1)
+                # ==================================================================
+                # Check if position is in profit
+                if position['action'] == 'BUY':
+                    current_gain_pct = ((current_price - position['entry_price']) / position['entry_price']) * 100
+                else:
+                    current_gain_pct = ((position['entry_price'] - current_price) / position['entry_price']) * 100
+                
+                # If profit > 0.3% (covers fees), check confidence
+                if current_gain_pct >= 0.3:
+                    confidence, details = self.calculate_target_confidence(
+                        symbol, 
+                        current_price, 
+                        position['entry_price'],
+                        position['take_profit'],
+                        position['action']
+                    )
+                    
+                    # Store confidence in position for dashboard display
+                    position['target_confidence'] = confidence
+                    position['confidence_details'] = details
+                    
+                    # DECISION: If confidence < 80%, LOCK PROFIT NOW!
+                    if confidence < 80:
+                        reason = f"Smart Lock ({confidence}% confidence, +{current_gain_pct:.2f}%)"
+                        logger.info(f"🔒 LOCKING PROFIT: {symbol} | Confidence: {confidence}% < 80% | Gain: +{current_gain_pct:.2f}%")
+                        positions_to_close.append((position_key, current_price, reason))
+                        continue
+                    else:
+                        # Confidence high, wait for target!
+                        logger.debug(f"⏳ WAITING: {symbol} | Confidence: {confidence}% >= 80% | Target likely!")
+                
+                # ==================================================================
+                # TRADITIONAL EXITS (Priority #2)
+                # ==================================================================
                 # Check stop loss
                 if position['action'] == 'BUY':
                     if current_price <= position['stop_loss']:
@@ -1324,24 +1736,42 @@ def get_validation():
 
 @app.route('/dashboard')
 def dashboard():
-    """Dashboard HTML page"""
+    """Dashboard HTML page - ChatGPT Style Dark Theme"""
     html = '''
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-        <title>🔥 Ultimate Hybrid Trading Bot</title>
+        <title>🔥 BADSHAH TRADING BOT</title>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
+            /* ===== RESET & BASE ===== */
             * { margin: 0; padding: 0; box-sizing: border-box; }
             
+            :root {
+                /* ChatGPT Dark Theme Colors */
+                --bg-primary: #0D1117;
+                --bg-secondary: #161B22;
+                --bg-tertiary: #21262D;
+                --text-primary: #E6EDF3;
+                --text-secondary: #8B949E;
+                --text-muted: #6E7681;
+                --border-color: #30363D;
+                --accent-blue: #58A6FF;
+                --success-green: #3FB950;
+                --danger-red: #F85149;
+                --warning-yellow: #D29922;
+                --gold: #FFA657;
+            }
+            
             body { 
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 50%, #db2777 100%);
-                background-size: 400% 400%;
-                animation: gradientShift 15s ease infinite;
-                color: #fff;
-                padding: 20px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+                background: var(--bg-primary);
+                color: var(--text-primary);
+                line-height: 1.6;
+                font-size: 16px;
+                padding: 0;
+                margin: 0;
                 min-height: 100vh;
             }
             
