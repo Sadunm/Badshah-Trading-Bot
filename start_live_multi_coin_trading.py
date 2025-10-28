@@ -36,6 +36,246 @@ API_KEY = 'tlA62wL7hb0H6ro0v9rhYcuSManm5gscnBWhNKHq9gamBRj3HJfm1drOECVNzHrk'
 SECRET_KEY = '7Lfx9dhbMP1EfiyXl6u3VluGUXZ5g4Bde7jk83uRQVZM9fCKqPojELo4zhe8izu3'
 
 # ============================================================================
+# PERFORMANCE ANALYTICS TRACKER
+# ============================================================================
+
+class PerformanceAnalytics:
+    """Track and analyze trading performance for validation"""
+    
+    def __init__(self):
+        self.daily_stats = defaultdict(lambda: {
+            'trades': 0, 'wins': 0, 'losses': 0, 'pnl': 0, 'capital': 0
+        })
+        self.peak_capital = 10000
+        self.current_drawdown = 0
+        self.max_drawdown = 0
+        self.market_conditions = []
+        self.start_date = datetime.now()
+        
+    def update_daily_stats(self, date_str, trade_result, capital):
+        """Update daily statistics"""
+        stats = self.daily_stats[date_str]
+        stats['trades'] += 1
+        stats['capital'] = capital
+        
+        if trade_result > 0:
+            stats['wins'] += 1
+            stats['pnl'] += trade_result
+        else:
+            stats['losses'] += 1
+            stats['pnl'] += trade_result
+    
+    def update_drawdown(self, current_capital):
+        """Calculate and update max drawdown"""
+        if current_capital > self.peak_capital:
+            self.peak_capital = current_capital
+        
+        self.current_drawdown = (self.peak_capital - current_capital) / self.peak_capital * 100
+        
+        if self.current_drawdown > self.max_drawdown:
+            self.max_drawdown = self.current_drawdown
+    
+    def get_consistency_score(self):
+        """Calculate consistency score (0-100)"""
+        if len(self.daily_stats) < 3:
+            return 0
+        
+        daily_pnls = [stats['pnl'] for stats in self.daily_stats.values()]
+        
+        if not daily_pnls:
+            return 0
+        
+        # Calculate standard deviation of daily returns
+        std_dev = np.std(daily_pnls) if len(daily_pnls) > 1 else 0
+        avg_pnl = np.mean(daily_pnls)
+        
+        # Lower std_dev = higher consistency
+        if std_dev == 0:
+            return 100
+        
+        # Consistency score: inverse of coefficient of variation
+        cv = abs(std_dev / avg_pnl) if avg_pnl != 0 else float('inf')
+        consistency = max(0, min(100, 100 - (cv * 10)))
+        
+        return consistency
+    
+    def get_win_streak(self):
+        """Get current winning/losing streak"""
+        if not self.daily_stats:
+            return {'current': 0, 'type': 'neutral', 'longest_win': 0, 'longest_loss': 0}
+        
+        sorted_days = sorted(self.daily_stats.items())
+        current_streak = 0
+        streak_type = 'neutral'
+        longest_win = 0
+        longest_loss = 0
+        temp_streak = 0
+        last_type = None
+        
+        for date, stats in sorted_days:
+            day_result = 'win' if stats['pnl'] > 0 else 'loss' if stats['pnl'] < 0 else 'neutral'
+            
+            if day_result == last_type and day_result != 'neutral':
+                temp_streak += 1
+            else:
+                if last_type == 'win' and temp_streak > longest_win:
+                    longest_win = temp_streak
+                elif last_type == 'loss' and temp_streak > longest_loss:
+                    longest_loss = temp_streak
+                temp_streak = 1
+                last_type = day_result
+        
+        # Check last streak
+        if last_type == 'win' and temp_streak > longest_win:
+            longest_win = temp_streak
+        elif last_type == 'loss' and temp_streak > longest_loss:
+            longest_loss = temp_streak
+        
+        # Current streak
+        if sorted_days:
+            last_day_pnl = sorted_days[-1][1]['pnl']
+            if last_day_pnl > 0:
+                current_streak = 1
+                streak_type = 'win'
+                # Count backwards
+                for i in range(len(sorted_days) - 2, -1, -1):
+                    if sorted_days[i][1]['pnl'] > 0:
+                        current_streak += 1
+                    else:
+                        break
+            elif last_day_pnl < 0:
+                current_streak = 1
+                streak_type = 'loss'
+                for i in range(len(sorted_days) - 2, -1, -1):
+                    if sorted_days[i][1]['pnl'] < 0:
+                        current_streak += 1
+                    else:
+                        break
+        
+        return {
+            'current': current_streak,
+            'type': streak_type,
+            'longest_win': longest_win,
+            'longest_loss': longest_loss
+        }
+    
+    def detect_market_condition(self, prices):
+        """Detect current market condition"""
+        if len(prices) < 20:
+            return "UNKNOWN"
+        
+        recent_prices = prices[-20:]
+        
+        # Calculate volatility
+        returns = np.diff(recent_prices) / recent_prices[:-1]
+        volatility = np.std(returns) * 100
+        
+        # Calculate trend
+        start_price = recent_prices[0]
+        end_price = recent_prices[-1]
+        trend = (end_price - start_price) / start_price * 100
+        
+        # Classify market
+        if volatility > 3:
+            condition = "HIGH_VOLATILITY"
+        elif abs(trend) < 1:
+            condition = "SIDEWAYS"
+        elif trend > 2:
+            condition = "STRONG_UPTREND"
+        elif trend < -2:
+            condition = "STRONG_DOWNTREND"
+        elif trend > 0:
+            condition = "WEAK_UPTREND"
+        else:
+            condition = "WEAK_DOWNTREND"
+        
+        # Store with timestamp
+        self.market_conditions.append({
+            'timestamp': datetime.now().isoformat(),
+            'condition': condition,
+            'volatility': volatility,
+            'trend': trend
+        })
+        
+        # Keep only last 100 entries
+        if len(self.market_conditions) > 100:
+            self.market_conditions = self.market_conditions[-100:]
+        
+        return condition
+    
+    def get_market_distribution(self):
+        """Get distribution of market conditions tested"""
+        if not self.market_conditions:
+            return {}
+        
+        distribution = defaultdict(int)
+        for entry in self.market_conditions:
+            distribution[entry['condition']] += 1
+        
+        total = len(self.market_conditions)
+        return {k: (v / total * 100) for k, v in distribution.items()}
+    
+    def is_live_ready(self, total_trades, win_rate, total_pnl):
+        """Check if bot meets live trading criteria"""
+        days_running = (datetime.now() - self.start_date).days
+        
+        criteria = {
+            'days_tested': {
+                'value': days_running,
+                'required': 14,
+                'passed': days_running >= 14,
+                'weight': 20
+            },
+            'win_rate': {
+                'value': win_rate,
+                'required': 55,
+                'passed': win_rate >= 55,
+                'weight': 25
+            },
+            'total_pnl': {
+                'value': total_pnl,
+                'required': 0,
+                'passed': total_pnl > 0,
+                'weight': 20
+            },
+            'max_drawdown': {
+                'value': self.max_drawdown,
+                'required': 10,
+                'passed': self.max_drawdown < 10,
+                'weight': 15
+            },
+            'consistency': {
+                'value': self.get_consistency_score(),
+                'required': 60,
+                'passed': self.get_consistency_score() >= 60,
+                'weight': 10
+            },
+            'total_trades': {
+                'value': total_trades,
+                'required': 30,
+                'passed': total_trades >= 30,
+                'weight': 10
+            }
+        }
+        
+        # Calculate overall score
+        total_weight = sum(c['weight'] for c in criteria.values())
+        achieved_weight = sum(c['weight'] for c in criteria.values() if c['passed'])
+        overall_score = (achieved_weight / total_weight * 100) if total_weight > 0 else 0
+        
+        all_passed = all(c['passed'] for c in criteria.values())
+        
+        return {
+            'ready': all_passed,
+            'score': overall_score,
+            'criteria': criteria,
+            'missing': [k for k, v in criteria.items() if not v['passed']]
+        }
+
+# Global analytics instance
+performance_analytics = PerformanceAnalytics()
+
+# ============================================================================
 # STRATEGY DEFINITIONS
 # ============================================================================
 
@@ -305,12 +545,16 @@ class UltimateHybridBot:
                 # Calculate opportunity score
                 score = self.calculate_opportunity_score(closes[-1], indicators, sr_levels)
                 
+                # Detect market condition
+                market_condition = performance_analytics.detect_market_condition(closes)
+                
                 # Store market data
                 self.market_data[symbol] = {
                     'price': closes[-1],
                     'indicators': indicators,
                     'sr_levels': sr_levels,
-                    'score': score
+                    'score': score,
+                    'market_condition': market_condition
                 }
                 
                 opportunities.append((symbol, score, indicators))
@@ -667,6 +911,11 @@ class UltimateHybridBot:
             }
             self.trades.append(trade)
             
+            # Update analytics
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            performance_analytics.update_daily_stats(date_str, pnl, self.current_capital + self.reserved_capital)
+            performance_analytics.update_drawdown(self.current_capital + self.reserved_capital)
+            
             hold_time = (datetime.now() - position['entry_time']).total_seconds() / 60
             
             emoji = "🎉" if pnl > 0 else "❌"
@@ -937,6 +1186,74 @@ def get_logs():
         return jsonify({'logs': []})
     except Exception as e:
         return jsonify({'logs': [f'Error reading logs: {str(e)}']})
+
+@app.route('/api/analytics')
+def get_analytics():
+    """Get comprehensive performance analytics"""
+    global trading_bot, performance_analytics
+    
+    if not trading_bot:
+        return jsonify({'error': 'Bot not initialized'})
+    
+    wins = sum(1 for t in trading_bot.trades if t.get('pnl', 0) > 0)
+    total_trades = len([t for t in trading_bot.trades if 'pnl' in t])
+    win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+    total_pnl = trading_bot.current_capital + trading_bot.reserved_capital - trading_bot.initial_capital
+    
+    # Update analytics
+    performance_analytics.update_drawdown(trading_bot.current_capital + trading_bot.reserved_capital)
+    
+    # Get live ready status
+    live_ready = performance_analytics.is_live_ready(total_trades, win_rate, total_pnl)
+    
+    # Get streak info
+    streak_info = performance_analytics.get_win_streak()
+    
+    # Get market distribution
+    market_dist = performance_analytics.get_market_distribution()
+    
+    # Daily performance
+    daily_perf = []
+    for date, stats in sorted(performance_analytics.daily_stats.items()):
+        daily_perf.append({
+            'date': date,
+            'trades': stats['trades'],
+            'wins': stats['wins'],
+            'losses': stats['losses'],
+            'pnl': stats['pnl'],
+            'capital': stats['capital'],
+            'win_rate': (stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0
+        })
+    
+    return jsonify({
+        'max_drawdown': performance_analytics.max_drawdown,
+        'current_drawdown': performance_analytics.current_drawdown,
+        'peak_capital': performance_analytics.peak_capital,
+        'consistency_score': performance_analytics.get_consistency_score(),
+        'days_running': (datetime.now() - performance_analytics.start_date).days,
+        'live_ready': live_ready,
+        'streak': streak_info,
+        'market_distribution': market_dist,
+        'daily_performance': daily_perf,
+        'current_market_condition': performance_analytics.market_conditions[-1] if performance_analytics.market_conditions else None
+    })
+
+@app.route('/api/validation')
+def get_validation():
+    """Get live trading readiness validation"""
+    global trading_bot, performance_analytics
+    
+    if not trading_bot:
+        return jsonify({'ready': False, 'error': 'Bot not initialized'})
+    
+    wins = sum(1 for t in trading_bot.trades if t.get('pnl', 0) > 0)
+    total_trades = len([t for t in trading_bot.trades if 'pnl' in t])
+    win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+    total_pnl = trading_bot.current_capital + trading_bot.reserved_capital - trading_bot.initial_capital
+    
+    validation_result = performance_analytics.is_live_ready(total_trades, win_rate, total_pnl)
+    
+    return jsonify(validation_result)
 
 @app.route('/dashboard')
 def dashboard():
@@ -1327,6 +1644,7 @@ def dashboard():
             <div class="tabs">
                 <button class="tab-button active" onclick="showTab('positions')">📊 Open Positions</button>
                 <button class="tab-button" onclick="showTab('strategies')">🎯 Strategy Performance</button>
+                <button class="tab-button" onclick="showTab('analytics')">📈 Performance Analytics</button>
                 <button class="tab-button" onclick="showTab('logs')">📝 Live Logs</button>
             </div>
             
@@ -1357,6 +1675,61 @@ def dashboard():
                         <span>Live Trading Logs</span>
                     </div>
                     <div class="logs-container" id="logs-container"></div>
+                </div>
+            </div>
+            
+            <div id="tab-analytics" class="tab-content">
+                <!-- Live Ready Status -->
+                <div class="section" style="margin-bottom: 20px;">
+                    <div class="section-title">
+                        <span>🎯</span>
+                        <span>Live Trading Readiness</span>
+                    </div>
+                    <div id="live-ready-container">
+                        <div style="text-align: center; padding: 40px;">
+                            <div id="readiness-score" style="font-size: 4em; font-weight: bold; margin-bottom: 20px;">0%</div>
+                            <div id="readiness-status" style="font-size: 1.5em; margin-bottom: 30px;">Analyzing...</div>
+                            <div id="criteria-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Performance Metrics -->
+                <div class="stats-grid" style="margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-label">📉 Max Drawdown</div>
+                        <div class="stat-value" id="max-drawdown">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">🎯 Consistency</div>
+                        <div class="stat-value" id="consistency-score">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">⏱️ Days Tested</div>
+                        <div class="stat-value" id="days-tested">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">🔥 Current Streak</div>
+                        <div class="stat-value" id="current-streak">0</div>
+                    </div>
+                </div>
+                
+                <!-- Market Conditions -->
+                <div class="section" style="margin-bottom: 20px;">
+                    <div class="section-title">
+                        <span>🌍</span>
+                        <span>Market Conditions Tested</span>
+                    </div>
+                    <div id="market-conditions" style="padding: 20px;"></div>
+                </div>
+                
+                <!-- Daily Performance -->
+                <div class="section">
+                    <div class="section-title">
+                        <span>📊</span>
+                        <span>Daily Performance History</span>
+                    </div>
+                    <div id="daily-performance" style="padding: 20px;"></div>
                 </div>
             </div>
             
@@ -1545,11 +1918,132 @@ def dashboard():
                     .catch(err => console.error('Error fetching logs:', err));
             }
             
+            function updateAnalytics() {
+                if (currentTab !== 'analytics') return;
+                
+                fetch('/api/analytics')
+                    .then(r => r.json())
+                    .then(data => {
+                        // Update metrics
+                        document.getElementById('max-drawdown').textContent = data.max_drawdown.toFixed(2) + '%';
+                        document.getElementById('consistency-score').textContent = data.consistency_score.toFixed(0) + '%';
+                        document.getElementById('days-tested').textContent = data.days_running;
+                        
+                        // Update streak
+                        const streak = data.streak;
+                        const streakEl = document.getElementById('current-streak');
+                        if (streak.current > 0) {
+                            streakEl.textContent = streak.current + ' ' + streak.type;
+                            streakEl.className = 'stat-value ' + (streak.type === 'win' ? 'positive' : 'negative');
+                        } else {
+                            streakEl.textContent = 'None';
+                            streakEl.className = 'stat-value';
+                        }
+                        
+                        // Update live ready status
+                        const liveReady = data.live_ready;
+                        const scoreEl = document.getElementById('readiness-score');
+                        const statusEl = document.getElementById('readiness-status');
+                        
+                        scoreEl.textContent = liveReady.score.toFixed(0) + '%';
+                        scoreEl.className = liveReady.ready ? 'positive' : 'negative';
+                        
+                        if (liveReady.ready) {
+                            statusEl.innerHTML = '✅ <strong>READY FOR LIVE TRADING!</strong>';
+                            statusEl.className = 'positive';
+                        } else {
+                            statusEl.innerHTML = '⏳ <strong>Keep Testing...</strong>';
+                            statusEl.className = '';
+                        }
+                        
+                        // Update criteria grid
+                        const criteriaGrid = document.getElementById('criteria-grid');
+                        criteriaGrid.innerHTML = '';
+                        
+                        for (const [key, crit] of Object.entries(liveReady.criteria)) {
+                            const div = document.createElement('div');
+                            div.style.cssText = 'background: rgba(255,255,255,0.08); padding: 15px; border-radius: 10px; border: 2px solid ' + (crit.passed ? '#4ade80' : '#f87171');
+                            
+                            const label = key.replace(/_/g, ' ').toUpperCase();
+                            const icon = crit.passed ? '✅' : '❌';
+                            
+                            div.innerHTML = `
+                                <div style="font-size: 2em; margin-bottom: 10px;">${icon}</div>
+                                <div style="font-weight: bold; margin-bottom: 5px;">${label}</div>
+                                <div style="font-size: 1.2em; color: ${crit.passed ? '#4ade80' : '#f87171'};">
+                                    ${crit.value.toFixed(1)} / ${crit.required}
+                                </div>
+                            `;
+                            
+                            criteriaGrid.appendChild(div);
+                        }
+                        
+                        // Update market conditions
+                        const marketDiv = document.getElementById('market-conditions');
+                        marketDiv.innerHTML = '';
+                        
+                        if (Object.keys(data.market_distribution).length > 0) {
+                            for (const [condition, pct] of Object.entries(data.market_distribution)) {
+                                const condDiv = document.createElement('div');
+                                condDiv.style.cssText = 'margin: 10px 0; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px;';
+                                
+                                condDiv.innerHTML = `
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <strong>${condition.replace(/_/g, ' ')}</strong>
+                                        <span style="font-size: 1.3em; font-weight: bold;">${pct.toFixed(1)}%</span>
+                                    </div>
+                                    <div style="margin-top: 8px; background: rgba(0,0,0,0.2); height: 10px; border-radius: 5px; overflow: hidden;">
+                                        <div style="width: ${pct}%; height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6);"></div>
+                                    </div>
+                                `;
+                                
+                                marketDiv.appendChild(condDiv);
+                            }
+                        } else {
+                            marketDiv.innerHTML = '<div class="no-data">No market data yet...</div>';
+                        }
+                        
+                        // Update daily performance
+                        const dailyDiv = document.getElementById('daily-performance');
+                        dailyDiv.innerHTML = '';
+                        
+                        if (data.daily_performance && data.daily_performance.length > 0) {
+                            data.daily_performance.forEach(day => {
+                                const dayDiv = document.createElement('div');
+                                dayDiv.style.cssText = 'margin: 10px 0; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px;';
+                                
+                                const pnlClass = day.pnl >= 0 ? 'positive' : 'negative';
+                                
+                                dayDiv.innerHTML = `
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                        <strong>${day.date}</strong>
+                                        <span class="${pnlClass}" style="font-size: 1.2em; font-weight: bold;">
+                                            ${day.pnl >= 0 ? '+' : ''}$${day.pnl.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 0.9em;">
+                                        <div>Trades: ${day.trades}</div>
+                                        <div>Wins: ${day.wins}</div>
+                                        <div>Losses: ${day.losses}</div>
+                                        <div>Win Rate: ${day.win_rate.toFixed(1)}%</div>
+                                    </div>
+                                `;
+                                
+                                dailyDiv.appendChild(dayDiv);
+                            });
+                        } else {
+                            dailyDiv.innerHTML = '<div class="no-data">No daily performance data yet...</div>';
+                        }
+                    })
+                    .catch(err => console.error('Error fetching analytics:', err));
+            }
+            
             // Update all data
             function updateAll() {
                 updateStats();
                 updatePositions();
                 updateLogs();
+                updateAnalytics();
             }
             
             // Initial load
