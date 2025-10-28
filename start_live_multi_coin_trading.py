@@ -1633,18 +1633,36 @@ def dashboard():
                         padding-top: 20px;
                         border-top: 2px solid rgba(251, 191, 36, 0.3);
                     ">
-                        <div style="font-size: 1.1em; margin-bottom: 8px; color: #e0e0e0;">
+                        <div style="font-size: 1.1em; margin-bottom: 15px; color: #e0e0e0;">
                             ⚡ Powered by Advanced AI & Professional Trading System ⚡
                         </div>
-                        <div style="font-size: 1.4em; font-weight: bold;">
-                            Created by <span style="
-                                color: #fbbf24;
-                                text-shadow: 0 0 20px rgba(251, 191, 36, 0.8);
-                                padding: 5px 15px;
-                                background: rgba(251, 191, 36, 0.1);
-                                border-radius: 8px;
-                                border: 2px solid rgba(251, 191, 36, 0.3);
-                            ">Automator Abdullah Bukhari</span>
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
+                            <!-- Mini Avatar -->
+                            <div style="
+                                width: 60px;
+                                height: 60px;
+                                border-radius: 50%;
+                                background: linear-gradient(135deg, #fbbf24, #f59e0b);
+                                border: 3px solid rgba(251, 191, 36, 0.8);
+                                box-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 1.5em;
+                                font-weight: bold;
+                                color: #1e293b;
+                                text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+                            ">AB</div>
+                            <div style="font-size: 1.4em; font-weight: bold;">
+                                Created by <span style="
+                                    color: #fbbf24;
+                                    text-shadow: 0 0 20px rgba(251, 191, 36, 0.8);
+                                    padding: 5px 15px;
+                                    background: rgba(251, 191, 36, 0.1);
+                                    border-radius: 8px;
+                                    border: 2px solid rgba(251, 191, 36, 0.3);
+                                ">Automator Abdullah Bukhari</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1825,9 +1843,46 @@ def dashboard():
                         border: 3px solid rgba(251, 191, 36, 0.5);
                         box-shadow: 0 0 30px rgba(251, 191, 36, 0.3);
                     ">
-                        <div style="font-size: 1.1em; margin-bottom: 12px; color: #e0e0e0;">
+                        <div style="font-size: 1.1em; margin-bottom: 20px; color: #e0e0e0;">
                             ⚡ Created by ⚡
                         </div>
+                        
+                        <!-- Creator Avatar -->
+                        <div style="
+                            width: 150px;
+                            height: 150px;
+                            margin: 0 auto 25px;
+                            border-radius: 50%;
+                            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+                            border: 5px solid rgba(251, 191, 36, 0.8);
+                            box-shadow: 
+                                0 0 30px rgba(251, 191, 36, 0.6),
+                                0 0 60px rgba(251, 191, 36, 0.4),
+                                inset 0 0 30px rgba(255, 255, 255, 0.2);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 4em;
+                            font-weight: bold;
+                            color: #1e293b;
+                            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+                            animation: avatarGlow 3s ease-in-out infinite alternate;
+                            position: relative;
+                            overflow: hidden;
+                        ">
+                            <!-- Shine effect -->
+                            <div style="
+                                position: absolute;
+                                top: -50%;
+                                left: -50%;
+                                width: 200%;
+                                height: 200%;
+                                background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+                                animation: shine 3s linear infinite;
+                            "></div>
+                            <span style="position: relative; z-index: 1;">AB</span>
+                        </div>
+                        
                         <div style="
                             font-size: 2em;
                             font-weight: bold;
@@ -1883,6 +1938,27 @@ def dashboard():
             @keyframes rotate {
                 0% { transform: rotate(0deg); }
                 100% { transform: rotate(360deg); }
+            }
+            
+            @keyframes avatarGlow {
+                0% {
+                    box-shadow: 
+                        0 0 30px rgba(251, 191, 36, 0.6),
+                        0 0 60px rgba(251, 191, 36, 0.4),
+                        inset 0 0 30px rgba(255, 255, 255, 0.2);
+                }
+                100% {
+                    box-shadow: 
+                        0 0 50px rgba(251, 191, 36, 0.8),
+                        0 0 80px rgba(251, 191, 36, 0.6),
+                        0 0 100px rgba(251, 191, 36, 0.4),
+                        inset 0 0 40px rgba(255, 255, 255, 0.3);
+                }
+            }
+            
+            @keyframes shine {
+                0% { transform: rotate(0deg) translate(-100%, -100%); }
+                100% { transform: rotate(360deg) translate(100%, 100%); }
             }
         </style>
         
