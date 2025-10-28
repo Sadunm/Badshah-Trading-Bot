@@ -2943,9 +2943,6 @@ def run_flask():
 
 if __name__ == '__main__':
     try:
-        # Declare globals
-        global trading_bot, trading_stats
-        
         # Test API connection
         logger.info("Testing Binance API connection...")
         test_url = 'https://testnet.binance.vision/api/v3/ping'
