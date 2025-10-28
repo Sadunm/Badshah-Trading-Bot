@@ -405,7 +405,11 @@ class UltimateHybridBot:
         self.load_trade_history()
         
         logger.info(f"🔥 ULTIMATE HYBRID BOT INITIALIZED")
-        logger.info(f"💰 Capital: ${initial_capital:.2f}")
+        logger.info(f"💰 Initial Capital: ${initial_capital:.2f}")
+        logger.info(f"💰 Current Capital: ${self.current_capital:.2f}")
+        logger.info(f"💰 Reserved Capital: ${self.reserved_capital:.2f}")
+        logger.info(f"💰 Total Portfolio: ${self.current_capital + self.reserved_capital:.2f}")
+        logger.info(f"💰 P&L: ${self.current_capital + self.reserved_capital - self.initial_capital:.2f}")
         logger.info(f"📊 Strategies: {len(STRATEGIES)}")
         logger.info(f"🪙 Coins: {len(COIN_UNIVERSE)}")
         logger.info(f"✅ Multi-Strategy | Multi-Timeframe | Multi-Coin")
@@ -1583,12 +1587,22 @@ def get_stats():
         if hasattr(start_time_str, 'isoformat'):
             start_time_str = start_time_str.isoformat()
         
+        # Calculate P&L
+        total_pnl = trading_bot.current_capital + trading_bot.reserved_capital - trading_bot.initial_capital
+        
+        # Debug logging
+        logger.debug(f"📊 API Stats Debug:")
+        logger.debug(f"  Initial: ${trading_bot.initial_capital:.2f}")
+        logger.debug(f"  Current: ${trading_bot.current_capital:.2f}")
+        logger.debug(f"  Reserved: ${trading_bot.reserved_capital:.2f}")
+        logger.debug(f"  Total P&L: ${total_pnl:.2f}")
+        
         stats_response = {
             'start_time': start_time_str,
             'total_trades': len(trading_bot.trades),
             'closed_trades': total,
             'win_rate': (wins / total * 100) if total > 0 else 0,
-            'total_pnl': trading_bot.current_capital + trading_bot.reserved_capital - trading_bot.initial_capital,
+            'total_pnl': total_pnl,
             'current_capital': trading_bot.current_capital,
             'reserved_capital': trading_bot.reserved_capital,
             'open_positions': len(trading_bot.positions),

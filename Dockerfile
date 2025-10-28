@@ -35,14 +35,16 @@ COPY config/ config/
 COPY src/ src/
 COPY strategies/ strategies/
 
-# Create necessary directories
-RUN mkdir -p /app/logs /app/reports /app/data
+# Create necessary directories with clean state
+RUN mkdir -p /app/logs /app/reports /app/data && \
+    rm -f /app/data/*.csv && \
+    echo "✅ Fresh data directories created"
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV TZ=UTC
 
-# Run the bot
-CMD ["python", "-u", "start_live_multi_coin_trading.py"]
+# Run the bot with fresh start
+CMD ["sh", "-c", "rm -f /app/data/*.csv /app/logs/*.log && python -u start_live_multi_coin_trading.py"]
 
 
