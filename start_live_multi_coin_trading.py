@@ -867,8 +867,13 @@ def get_stats():
         wins = sum(1 for t in trading_bot.trades if t.get('pnl', 0) > 0)
         total = len([t for t in trading_bot.trades if 'pnl' in t])
         
-        trading_stats = {
-            'start_time': trading_stats['start_time'].isoformat(),
+        # Convert start_time to string if it's a datetime object
+        start_time_str = trading_stats['start_time']
+        if hasattr(start_time_str, 'isoformat'):
+            start_time_str = start_time_str.isoformat()
+        
+        stats_response = {
+            'start_time': start_time_str,
             'total_trades': len(trading_bot.trades),
             'closed_trades': total,
             'win_rate': (wins / total * 100) if total > 0 else 0,
@@ -878,6 +883,8 @@ def get_stats():
             'open_positions': len(trading_bot.positions),
             'strategy_stats': dict(trading_bot.strategy_stats)
         }
+        
+        return jsonify(stats_response)
     
     return jsonify(trading_stats)
 
