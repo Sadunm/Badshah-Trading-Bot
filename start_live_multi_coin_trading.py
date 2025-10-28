@@ -881,6 +881,56 @@ def get_stats():
     
     return jsonify(trading_stats)
 
+@app.route('/api/positions')
+def get_positions():
+    """Get detailed position information"""
+    global trading_bot
+    
+    positions_data = []
+    
+    if trading_bot:
+        for key, pos in trading_bot.positions.items():
+            current_price = trading_bot.get_current_price(pos['symbol'])
+            if current_price:
+                if pos['action'] == 'BUY':
+                    pnl_pct = (current_price - pos['entry_price']) / pos['entry_price'] * 100
+                else:
+                    pnl_pct = (pos['entry_price'] - current_price) / pos['entry_price'] * 100
+                
+                hold_time = (datetime.now() - pos['entry_time']).total_seconds() / 60
+                
+                positions_data.append({
+                    'symbol': pos['symbol'],
+                    'strategy': pos['strategy'],
+                    'action': pos['action'],
+                    'quantity': pos['quantity'],
+                    'entry_price': pos['entry_price'],
+                    'current_price': current_price,
+                    'pnl_pct': pnl_pct,
+                    'stop_loss': pos['stop_loss'],
+                    'take_profit': pos['take_profit'],
+                    'hold_time': hold_time,
+                    'reason': pos['reason'],
+                    'confidence': pos['confidence']
+                })
+    
+    return jsonify(positions_data)
+
+@app.route('/api/logs')
+def get_logs():
+    """Get recent log entries"""
+    try:
+        log_file = 'logs/multi_coin_trading.log'
+        if os.path.exists(log_file):
+            with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+                # Return last 100 lines
+                recent_logs = lines[-100:]
+                return jsonify({'logs': recent_logs})
+        return jsonify({'logs': []})
+    except Exception as e:
+        return jsonify({'logs': [f'Error reading logs: {str(e)}']})
+
 @app.route('/dashboard')
 def dashboard():
     """Dashboard HTML page"""
@@ -888,112 +938,447 @@ def dashboard():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Ultimate Hybrid Trading Bot</title>
+        <title>🔥 Ultimate Hybrid Trading Bot</title>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
+            
             body { 
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 50%, #db2777 100%);
+                background-size: 400% 400%;
+                animation: gradientShift 15s ease infinite;
                 color: #fff;
                 padding: 20px;
+                min-height: 100vh;
             }
-            .container { max-width: 1200px; margin: 0 auto; }
-            h1 { 
-                text-align: center; 
-                font-size: 2.5em; 
-                margin-bottom: 10px;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            
+            @keyframes gradientShift {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
             }
-            .subtitle {
+            
+            @keyframes fadeInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(30px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+            
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+            }
+            
+            .container { 
+                max-width: 1400px; 
+                margin: 0 auto; 
+                animation: fadeInUp 0.6s ease;
+            }
+            
+            header {
                 text-align: center;
-                font-size: 1.2em;
-                margin-bottom: 30px;
-                opacity: 0.9;
+                margin-bottom: 40px;
+                animation: fadeInUp 0.8s ease;
             }
+            
+            h1 { 
+                font-size: 3em; 
+                margin-bottom: 10px;
+                text-shadow: 3px 3px 6px rgba(0,0,0,0.4);
+                background: linear-gradient(45deg, #fff, #fcd34d);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+            
+            .subtitle {
+                font-size: 1.3em;
+                opacity: 0.95;
+                letter-spacing: 1px;
+            }
+            
             .stats-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
                 gap: 20px;
                 margin-bottom: 30px;
+                animation: fadeInUp 1s ease;
             }
+            
             .stat-card {
-                background: rgba(255,255,255,0.1);
-                backdrop-filter: blur(10px);
-                border-radius: 15px;
-                padding: 25px;
-                border: 1px solid rgba(255,255,255,0.2);
-                transition: transform 0.3s;
+                background: rgba(255,255,255,0.12);
+                backdrop-filter: blur(15px);
+                border-radius: 20px;
+                padding: 30px;
+                border: 2px solid rgba(255,255,255,0.25);
+                box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+                transition: all 0.3s ease;
+                position: relative;
+                overflow: hidden;
             }
-            .stat-card:hover { transform: translateY(-5px); }
+            
+            .stat-card::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+                opacity: 0;
+                transition: opacity 0.3s;
+            }
+            
+            .stat-card:hover {
+                transform: translateY(-8px);
+                border-color: rgba(255,255,255,0.4);
+                box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+            }
+            
+            .stat-card:hover::before {
+                opacity: 1;
+            }
+            
             .stat-label {
-                font-size: 0.9em;
-                opacity: 0.8;
-                margin-bottom: 10px;
+                font-size: 0.95em;
+                opacity: 0.85;
+                margin-bottom: 12px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                font-weight: 600;
             }
+            
             .stat-value {
-                font-size: 2em;
+                font-size: 2.2em;
+                font-weight: bold;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            }
+            
+            .positive { 
+                color: #4ade80;
+                animation: pulse 2s infinite;
+            }
+            
+            .negative { 
+                color: #f87171; 
+            }
+            
+            .section {
+                background: rgba(255,255,255,0.12);
+                backdrop-filter: blur(15px);
+                border-radius: 20px;
+                padding: 30px;
+                border: 2px solid rgba(255,255,255,0.25);
+                box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+                margin-bottom: 30px;
+                animation: fadeInUp 1.2s ease;
+            }
+            
+            .section-title {
+                font-size: 1.6em;
+                margin-bottom: 25px;
+                border-bottom: 2px solid rgba(255,255,255,0.2);
+                padding-bottom: 15px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .position-card {
+                background: rgba(255,255,255,0.08);
+                border-radius: 15px;
+                padding: 20px;
+                margin: 15px 0;
+                border: 1px solid rgba(255,255,255,0.15);
+                transition: all 0.3s;
+            }
+            
+            .position-card:hover {
+                background: rgba(255,255,255,0.12);
+                border-color: rgba(255,255,255,0.3);
+                transform: translateX(5px);
+            }
+            
+            .position-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 15px;
+            }
+            
+            .position-symbol {
+                font-size: 1.4em;
                 font-weight: bold;
             }
-            .positive { color: #4ade80; }
-            .negative { color: #f87171; }
-            .strategy-stats {
-                background: rgba(255,255,255,0.1);
-                backdrop-filter: blur(10px);
-                border-radius: 15px;
-                padding: 25px;
-                border: 1px solid rgba(255,255,255,0.2);
+            
+            .position-pnl {
+                font-size: 1.3em;
+                font-weight: bold;
             }
+            
+            .position-details {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 15px;
+                margin-top: 15px;
+            }
+            
+            .detail-item {
+                background: rgba(0,0,0,0.2);
+                padding: 10px;
+                border-radius: 8px;
+            }
+            
+            .detail-label {
+                font-size: 0.85em;
+                opacity: 0.8;
+                margin-bottom: 5px;
+            }
+            
+            .detail-value {
+                font-size: 1.1em;
+                font-weight: 600;
+            }
+            
+            .strategy-badge {
+                display: inline-block;
+                background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+                padding: 6px 16px;
+                border-radius: 20px;
+                font-size: 0.9em;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+            }
+            
+            .action-badge {
+                display: inline-block;
+                padding: 6px 16px;
+                border-radius: 20px;
+                font-size: 0.9em;
+                font-weight: 600;
+            }
+            
+            .action-buy {
+                background: linear-gradient(135deg, #10b981, #059669);
+            }
+            
+            .action-sell {
+                background: linear-gradient(135deg, #ef4444, #dc2626);
+            }
+            
             .strategy-item {
                 display: flex;
                 justify-content: space-between;
-                padding: 15px;
-                margin: 10px 0;
-                background: rgba(255,255,255,0.05);
-                border-radius: 10px;
+                align-items: center;
+                padding: 18px;
+                margin: 12px 0;
+                background: rgba(255,255,255,0.08);
+                border-radius: 12px;
+                border: 1px solid rgba(255,255,255,0.1);
+                transition: all 0.3s;
             }
+            
+            .strategy-item:hover {
+                background: rgba(255,255,255,0.12);
+                transform: translateX(5px);
+            }
+            
+            .logs-container {
+                background: rgba(0,0,0,0.3);
+                border-radius: 12px;
+                padding: 20px;
+                max-height: 400px;
+                overflow-y: auto;
+                font-family: 'Courier New', monospace;
+                font-size: 0.9em;
+                line-height: 1.6;
+            }
+            
+            .logs-container::-webkit-scrollbar {
+                width: 8px;
+            }
+            
+            .logs-container::-webkit-scrollbar-track {
+                background: rgba(255,255,255,0.05);
+                border-radius: 4px;
+            }
+            
+            .logs-container::-webkit-scrollbar-thumb {
+                background: rgba(255,255,255,0.2);
+                border-radius: 4px;
+            }
+            
+            .logs-container::-webkit-scrollbar-thumb:hover {
+                background: rgba(255,255,255,0.3);
+            }
+            
+            .log-line {
+                padding: 4px 0;
+                border-bottom: 1px solid rgba(255,255,255,0.05);
+            }
+            
+            .log-error { color: #fca5a5; }
+            .log-warning { color: #fcd34d; }
+            .log-info { color: #a5f3fc; }
+            .log-success { color: #86efac; }
+            
+            .tabs {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 20px;
+                flex-wrap: wrap;
+            }
+            
+            .tab-button {
+                background: rgba(255,255,255,0.1);
+                border: 1px solid rgba(255,255,255,0.2);
+                color: #fff;
+                padding: 12px 24px;
+                border-radius: 10px;
+                cursor: pointer;
+                transition: all 0.3s;
+                font-size: 1em;
+                font-weight: 600;
+            }
+            
+            .tab-button:hover {
+                background: rgba(255,255,255,0.15);
+            }
+            
+            .tab-button.active {
+                background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+                border-color: transparent;
+            }
+            
+            .tab-content {
+                display: none;
+            }
+            
+            .tab-content.active {
+                display: block;
+                animation: fadeInUp 0.4s ease;
+            }
+            
             .last-update {
                 text-align: center;
-                margin-top: 20px;
+                margin-top: 30px;
                 opacity: 0.7;
-                font-size: 0.9em;
+                font-size: 0.95em;
+                padding: 15px;
+                background: rgba(0,0,0,0.2);
+                border-radius: 10px;
+            }
+            
+            .no-data {
+                text-align: center;
+                padding: 40px;
+                opacity: 0.6;
+                font-size: 1.1em;
+            }
+            
+            @media (max-width: 768px) {
+                h1 { font-size: 2em; }
+                .subtitle { font-size: 1em; }
+                .stats-grid { grid-template-columns: 1fr 1fr; }
+                .position-details { grid-template-columns: 1fr; }
             }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>🔥 Ultimate Hybrid Trading Bot</h1>
-            <div class="subtitle">Multi-Strategy | Multi-Timeframe | Multi-Coin</div>
+            <header>
+                <h1>🔥 ULTIMATE HYBRID BOT 🔥</h1>
+                <div class="subtitle">Multi-Strategy • Multi-Timeframe • Multi-Coin</div>
+            </header>
             
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-label">Total Trades</div>
+                    <div class="stat-label">💰 Total Trades</div>
                     <div class="stat-value" id="total-trades">0</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Win Rate</div>
+                    <div class="stat-label">🎯 Win Rate</div>
                     <div class="stat-value" id="win-rate">0%</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Total P&L</div>
+                    <div class="stat-label">💵 Total P&L</div>
                     <div class="stat-value" id="total-pnl">$0.00</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Open Positions</div>
+                    <div class="stat-label">📊 Open Positions</div>
                     <div class="stat-value" id="open-positions">0</div>
                 </div>
             </div>
             
-            <div class="strategy-stats">
-                <h2 style="margin-bottom: 20px;">📊 Strategy Performance</h2>
-                <div id="strategy-list"></div>
+            <div class="tabs">
+                <button class="tab-button active" onclick="showTab('positions')">📊 Open Positions</button>
+                <button class="tab-button" onclick="showTab('strategies')">🎯 Strategy Performance</button>
+                <button class="tab-button" onclick="showTab('logs')">📝 Live Logs</button>
             </div>
             
-            <div class="last-update">Last updated: <span id="last-update">-</span></div>
+            <div id="tab-positions" class="tab-content active">
+                <div class="section">
+                    <div class="section-title">
+                        <span>📊</span>
+                        <span>Open Positions</span>
+                    </div>
+                    <div id="positions-list"></div>
+                </div>
+            </div>
+            
+            <div id="tab-strategies" class="tab-content">
+                <div class="section">
+                    <div class="section-title">
+                        <span>🎯</span>
+                        <span>Strategy Performance</span>
+                    </div>
+                    <div id="strategy-list"></div>
+                </div>
+            </div>
+            
+            <div id="tab-logs" class="tab-content">
+                <div class="section">
+                    <div class="section-title">
+                        <span>📝</span>
+                        <span>Live Trading Logs</span>
+                    </div>
+                    <div class="logs-container" id="logs-container"></div>
+                </div>
+            </div>
+            
+            <div class="last-update">
+                ⏰ Last updated: <span id="last-update">-</span> • 🔄 Auto-refresh: ON
+            </div>
         </div>
         
         <script>
+            let currentTab = 'positions';
+            
+            function showTab(tabName) {
+                currentTab = tabName;
+                
+                // Hide all tabs
+                document.querySelectorAll('.tab-content').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                
+                // Show selected tab
+                document.getElementById('tab-' + tabName).classList.add('active');
+                
+                // Update button states
+                document.querySelectorAll('.tab-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                event.target.classList.add('active');
+            }
+            
             function updateStats() {
                 fetch('/api/stats')
                     .then(r => r.json())
@@ -1012,30 +1397,159 @@ def dashboard():
                         const strategyList = document.getElementById('strategy-list');
                         strategyList.innerHTML = '';
                         
+                        let hasStrategies = false;
                         for (const [name, stats] of Object.entries(data.strategy_stats || {})) {
                             if (stats.trades > 0) {
+                                hasStrategies = true;
                                 const div = document.createElement('div');
                                 div.className = 'strategy-item';
                                 div.innerHTML = `
                                     <div>
-                                        <strong>${name}</strong><br>
-                                        <small>${stats.trades} trades | Win Rate: ${stats.win_rate.toFixed(1)}%</small>
+                                        <strong style="font-size: 1.2em;">${name.replace(/_/g, ' ')}</strong><br>
+                                        <small style="opacity: 0.8;">
+                                            ${stats.trades} trades • 
+                                            Win Rate: ${stats.win_rate.toFixed(1)}% • 
+                                            ${stats.wins} wins / ${stats.losses} losses
+                                        </small>
                                     </div>
-                                    <div class="${stats.profit >= 0 ? 'positive' : 'negative'}">
-                                        $${stats.profit.toFixed(2)}
+                                    <div style="font-size: 1.4em; font-weight: bold;" class="${stats.profit >= 0 ? 'positive' : 'negative'}">
+                                        ${stats.profit >= 0 ? '+' : ''}$${stats.profit.toFixed(2)}
                                     </div>
                                 `;
                                 strategyList.appendChild(div);
                             }
                         }
                         
+                        if (!hasStrategies) {
+                            strategyList.innerHTML = '<div class="no-data">No strategy data yet... Waiting for trades! 🚀</div>';
+                        }
+                        
                         document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
                     })
-                    .catch(err => console.error('Error:', err));
+                    .catch(err => console.error('Error fetching stats:', err));
             }
             
-            updateStats();
-            setInterval(updateStats, 5000);
+            function updatePositions() {
+                fetch('/api/positions')
+                    .then(r => r.json())
+                    .then(positions => {
+                        const positionsList = document.getElementById('positions-list');
+                        positionsList.innerHTML = '';
+                        
+                        if (positions.length === 0) {
+                            positionsList.innerHTML = '<div class="no-data">No open positions. Bot is scanning for opportunities... 🔍</div>';
+                            return;
+                        }
+                        
+                        positions.forEach(pos => {
+                            const div = document.createElement('div');
+                            div.className = 'position-card';
+                            
+                            const pnlClass = pos.pnl_pct >= 0 ? 'positive' : 'negative';
+                            const actionClass = pos.action === 'BUY' ? 'action-buy' : 'action-sell';
+                            
+                            div.innerHTML = `
+                                <div class="position-header">
+                                    <div>
+                                        <span class="position-symbol">${pos.symbol}</span>
+                                        <span class="strategy-badge">${pos.strategy.replace(/_/g, ' ')}</span>
+                                        <span class="action-badge ${actionClass}">${pos.action}</span>
+                                    </div>
+                                    <div class="position-pnl ${pnlClass}">
+                                        ${pos.pnl_pct >= 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%
+                                    </div>
+                                </div>
+                                
+                                <div style="margin: 10px 0; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                                    <strong>Reason:</strong> ${pos.reason} • 
+                                    <strong>Confidence:</strong> ${(pos.confidence * 100).toFixed(0)}%
+                                </div>
+                                
+                                <div class="position-details">
+                                    <div class="detail-item">
+                                        <div class="detail-label">Entry Price</div>
+                                        <div class="detail-value">$${pos.entry_price.toFixed(2)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Current Price</div>
+                                        <div class="detail-value">$${pos.current_price.toFixed(2)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Quantity</div>
+                                        <div class="detail-value">${pos.quantity.toFixed(4)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Hold Time</div>
+                                        <div class="detail-value">${Math.floor(pos.hold_time)} min</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Stop Loss</div>
+                                        <div class="detail-value negative">$${pos.stop_loss.toFixed(2)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Take Profit</div>
+                                        <div class="detail-value positive">$${pos.take_profit.toFixed(2)}</div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            positionsList.appendChild(div);
+                        });
+                    })
+                    .catch(err => console.error('Error fetching positions:', err));
+            }
+            
+            function updateLogs() {
+                if (currentTab !== 'logs') return;
+                
+                fetch('/api/logs')
+                    .then(r => r.json())
+                    .then(data => {
+                        const logsContainer = document.getElementById('logs-container');
+                        logsContainer.innerHTML = '';
+                        
+                        if (data.logs.length === 0) {
+                            logsContainer.innerHTML = '<div class="no-data">No logs available yet...</div>';
+                            return;
+                        }
+                        
+                        data.logs.forEach(line => {
+                            const div = document.createElement('div');
+                            div.className = 'log-line';
+                            
+                            // Colorize based on log level
+                            if (line.includes('ERROR')) {
+                                div.className += ' log-error';
+                            } else if (line.includes('WARNING')) {
+                                div.className += ' log-warning';
+                            } else if (line.includes('SIGNAL') || line.includes('OPENED') || line.includes('CLOSED')) {
+                                div.className += ' log-success';
+                            } else {
+                                div.className += ' log-info';
+                            }
+                            
+                            div.textContent = line;
+                            logsContainer.appendChild(div);
+                        });
+                        
+                        // Auto-scroll to bottom
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                    })
+                    .catch(err => console.error('Error fetching logs:', err));
+            }
+            
+            // Update all data
+            function updateAll() {
+                updateStats();
+                updatePositions();
+                updateLogs();
+            }
+            
+            // Initial load
+            updateAll();
+            
+            // Auto-refresh every 5 seconds
+            setInterval(updateAll, 5000);
         </script>
     </body>
     </html>
