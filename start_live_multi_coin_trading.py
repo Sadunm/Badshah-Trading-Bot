@@ -402,6 +402,11 @@ class UltimateHybridBot:
         
         # Data Persistence
         self.csv_file = 'data/trade_history.csv'
+        
+        # 🧹 CRITICAL: Delete old CSV to start fresh (fixes -$2.50 bug)
+        self.cleanup_old_data()
+        
+        # Now load (will be empty after cleanup)
         self.load_trade_history()
         
         logger.info(f"🔥 ULTIMATE HYBRID BOT INITIALIZED")
@@ -417,6 +422,23 @@ class UltimateHybridBot:
     # ========================================================================
     # DATA PERSISTENCE METHODS
     # ========================================================================
+    
+    def cleanup_old_data(self):
+        """Delete old CSV file to ensure fresh start - FIXES -$2.50 BUG!"""
+        try:
+            if os.path.exists(self.csv_file):
+                os.remove(self.csv_file)
+                logger.info(f"🧹 Deleted old trade history CSV - Starting fresh!")
+            else:
+                logger.info(f"✅ No old CSV found - Clean start!")
+            
+            # Ensure data directory exists
+            os.makedirs('data', exist_ok=True)
+            logger.info(f"📁 Data directory ready")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not delete old CSV: {e}")
+            # Don't crash if cleanup fails, just warn
     
     def load_trade_history(self):
         """Load trade history from CSV (for viewing only, not P&L calculation)"""
