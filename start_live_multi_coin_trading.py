@@ -1618,8 +1618,11 @@ def dashboard():
     <body>
         <div class="container">
             <header>
-                <h1>🔥 ULTIMATE HYBRID BOT 🔥</h1>
+                <h1>🔥 BADSHAH TRADING BOT 🔥</h1>
                 <div class="subtitle">Multi-Strategy • Multi-Timeframe • Multi-Coin</div>
+                <div style="margin-top: 10px; font-size: 0.9em; opacity: 0.8; font-style: italic;">
+                    Created by <strong style="color: #fbbf24;">Automator Abdullah Bukhari</strong>
+                </div>
             </header>
             
             <div class="stats-grid">
@@ -1736,7 +1739,46 @@ def dashboard():
             <div class="last-update">
                 ⏰ Last updated: <span id="last-update">-</span> • 🔄 Auto-refresh: ON
             </div>
+            
+            <!-- Creator Footer -->
+            <div style="
+                margin-top: 30px;
+                padding: 25px;
+                background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+                border-radius: 15px;
+                border: 2px solid rgba(59, 130, 246, 0.3);
+                text-align: center;
+                box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
+            ">
+                <div style="font-size: 1.8em; font-weight: bold; margin-bottom: 10px; 
+                    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #fbbf24);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
+                    animation: gradient 3s ease infinite;
+                    background-size: 200% 200%;
+                ">
+                    🚀 BADSHAH TRADING BOT 🚀
+                </div>
+                <div style="font-size: 1.2em; margin-bottom: 5px; color: #e0e0e0;">
+                    Powered by Advanced AI & Multi-Strategy System
+                </div>
+                <div style="font-size: 1em; opacity: 0.9; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
+                    ⚡ Created by <strong style="color: #fbbf24; font-size: 1.2em;">Automator Abdullah Bukhari</strong> ⚡
+                </div>
+                <div style="font-size: 0.85em; margin-top: 8px; opacity: 0.7;">
+                    Professional Trading Automation • Risk Management • Real-Time Analytics
+                </div>
+            </div>
         </div>
+        
+        <style>
+            @keyframes gradient {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+            }
+        </style>
         
         <script>
             let currentTab = 'positions';
