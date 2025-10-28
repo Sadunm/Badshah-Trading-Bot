@@ -415,14 +415,20 @@ class UltimateHybridBot:
     # ========================================================================
     
     def load_trade_history(self):
-        """Load trade history from CSV"""
+        """Load trade history from CSV (for viewing only, not P&L calculation)"""
         try:
+            # Note: Old trades are stored for history viewing only
+            # They don't affect current session P&L calculation
+            # Current session starts fresh with initial_capital
             if os.path.exists(self.csv_file):
+                # Just log that we have history, don't load into active trades
                 with open(self.csv_file, 'r', newline='', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
-                    for row in reader:
-                        self.trades.append(row)
-                logger.info(f"✅ Loaded {len(self.trades)} historical trades")
+                    count = sum(1 for _ in reader)
+                logger.info(f"✅ Found {count} historical trades in CSV (viewing only)")
+            
+            # Current session trades start empty (fresh P&L)
+            self.trades = []
         except Exception as e:
             logger.error(f"Error loading trade history: {e}")
     
@@ -1621,49 +1627,80 @@ def get_logs():
 
 @app.route('/api/trade-history')
 def get_trade_history():
-    """Get complete trade history with entry/exit pairs"""
+    """Get complete trade history from CSV file"""
     global trading_bot
     
     if not trading_bot:
         return jsonify({'trades': []})
     
-    # Get all closed trades (CLOSE actions)
-    closed_trades = [t for t in trading_bot.trades if t.get('action') == 'CLOSE']
-    
     trade_history = []
-    for close_trade in closed_trades:
-        # Find corresponding entry trade
-        position_key = close_trade.get('position_key', '')
-        entry_trade = next((t for t in trading_bot.trades 
-                          if t.get('position_key') == position_key and t.get('action') != 'CLOSE'), None)
+    
+    try:
+        # Read directly from CSV file (all historical + current session trades)
+        if os.path.exists(trading_bot.csv_file):
+            with open(trading_bot.csv_file, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    trade_record = {
+                        'symbol': row.get('symbol', ''),
+                        'strategy': row.get('strategy', ''),
+                        'action': row.get('action', ''),
+                        'entry_time': row.get('timestamp', ''),
+                        'exit_time': row.get('timestamp', ''),
+                        'entry_price': float(row.get('entry_price', 0)),
+                        'exit_price': float(row.get('exit_price', 0)),
+                        'quantity': float(row.get('quantity', 0)),
+                        'entry_reason': row.get('entry_reason', 'N/A'),
+                        'exit_reason': row.get('exit_reason', 'N/A'),
+                        'market_condition_entry': row.get('entry_market_condition', 'Unknown'),
+                        'market_condition_exit': row.get('exit_market_condition', 'Unknown'),
+                        'hold_duration': float(row.get('hold_duration_hours', 0)) * 60,  # Convert to minutes
+                        'pnl': float(row.get('pnl', 0)),
+                        'pnl_pct': float(row.get('pnl_pct', 0)),
+                        'fee': float(row.get('fees', 0)),
+                        'stop_loss': float(row.get('stop_loss', 0)),
+                        'take_profit': float(row.get('take_profit', 0)),
+                        'confidence': float(row.get('confidence', 0)),
+                        'is_win': float(row.get('pnl', 0)) > 0
+                    }
+                    trade_history.append(trade_record)
         
-        trade_record = {
-            'symbol': close_trade['symbol'],
-            'strategy': close_trade['strategy'],
-            'action': entry_trade['action'] if entry_trade else 'BUY',
-            'entry_time': entry_trade['timestamp'].isoformat() if entry_trade else close_trade.get('entry_time', datetime.now()).isoformat(),
-            'exit_time': close_trade['timestamp'].isoformat(),
-            'entry_price': close_trade.get('entry_price', 0),
-            'exit_price': close_trade['price'],
-            'quantity': close_trade['quantity'],
-            'entry_reason': close_trade.get('entry_reason', 'N/A'),
-            'exit_reason': close_trade.get('exit_reason', 'N/A'),
-            'market_condition_entry': entry_trade.get('market_condition', 'Unknown') if entry_trade else 'Unknown',
-            'market_condition_exit': close_trade.get('market_condition_exit', 'Unknown'),
-            'hold_duration': close_trade.get('hold_duration', 0),
-            'pnl': close_trade['pnl'],
-            'pnl_pct': close_trade['pnl_pct'],
-            'fee': close_trade['fee'],
-            'stop_loss': close_trade.get('stop_loss', 0),
-            'take_profit': close_trade.get('take_profit', 0),
-            'confidence': entry_trade.get('confidence', 0) if entry_trade else 0,
-            'is_win': close_trade['pnl'] > 0
-        }
+        # Also add current session closed trades
+        closed_trades = [t for t in trading_bot.trades if t.get('action') == 'CLOSE']
+        for close_trade in closed_trades:
+            position_key = close_trade.get('position_key', '')
+            entry_trade = next((t for t in trading_bot.trades 
+                              if t.get('position_key') == position_key and t.get('action') != 'CLOSE'), None)
+            
+            trade_record = {
+                'symbol': close_trade['symbol'],
+                'strategy': close_trade['strategy'],
+                'action': entry_trade['action'] if entry_trade else 'BUY',
+                'entry_time': entry_trade['timestamp'].isoformat() if entry_trade else close_trade.get('entry_time', datetime.now()).isoformat(),
+                'exit_time': close_trade['timestamp'].isoformat(),
+                'entry_price': close_trade.get('entry_price', 0),
+                'exit_price': close_trade['price'],
+                'quantity': close_trade['quantity'],
+                'entry_reason': close_trade.get('entry_reason', 'N/A'),
+                'exit_reason': close_trade.get('exit_reason', 'N/A'),
+                'market_condition_entry': entry_trade.get('market_condition', 'Unknown') if entry_trade else 'Unknown',
+                'market_condition_exit': close_trade.get('market_condition_exit', 'Unknown'),
+                'hold_duration': close_trade.get('hold_duration', 0),
+                'pnl': close_trade['pnl'],
+                'pnl_pct': close_trade['pnl_pct'],
+                'fee': close_trade['fee'],
+                'stop_loss': close_trade.get('stop_loss', 0),
+                'take_profit': close_trade.get('take_profit', 0),
+                'confidence': entry_trade.get('confidence', 0) if entry_trade else 0,
+                'is_win': close_trade['pnl'] > 0
+            }
+            trade_history.append(trade_record)
         
-        trade_history.append(trade_record)
+    except Exception as e:
+        logger.error(f"Error reading trade history: {e}")
     
     # Sort by exit time (most recent first)
-    trade_history.sort(key=lambda x: x['exit_time'], reverse=True)
+    trade_history.sort(key=lambda x: x.get('exit_time', ''), reverse=True)
     
     return jsonify({'trades': trade_history})
 @app.route('/api/analytics')
