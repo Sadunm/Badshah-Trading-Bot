@@ -2507,13 +2507,19 @@ class UltimateHybridBot:
             # Apply volatility adjustment
             capital_to_use *= volatility_adjustment
             
+            # 🔥 BUG FIX: Ensure we don't exceed available capital after volatility adjustment!
+            # This can happen when volatility_adjustment > 1.0 (low volatility bonus)
+            capital_to_use = min(capital_to_use, available_capital)
+            
             # Position value
             position_value = capital_to_use / strategy['max_positions']
             
             # Add fees
             total_cost = position_value * (1 + self.fee_rate + self.slippage_rate)
             
+            # 🔥 SAFETY CHECK: Should never happen now, but keep as final safeguard
             if total_cost > available_capital:
+                logger.warning(f"⚠️ {symbol}: Position cost ${total_cost:.2f} exceeds available ${available_capital:.2f}, skipping")
                 return 0
             
             # Calculate quantity
@@ -2710,18 +2716,62 @@ class UltimateHybridBot:
                     order_result = self.place_live_order(symbol, close_side, position['quantity'])
                     
                     if not order_result:
+                        # 🔥 CRITICAL BUG FIX: Track failed close attempts!
                         logger.error(f"❌ LIVE CLOSE ORDER FAILED for {symbol}, position may be stuck!")
-                        return False
-                    
-                    # Extract executed price from order response
-                    exec_price = float(order_result.get('fills', [{}])[0].get('price', current_price)) if order_result.get('fills') else current_price
-                    executed_qty = float(order_result.get('executedQty', position['quantity']))
-                    
-                    position_value = executed_qty * exec_price
-                    fee = position_value * self.fee_rate
-                    proceeds = position_value - fee
-                    
-                    logger.info(f"✅ LIVE CLOSE EXECUTED: {symbol} | Price: ${exec_price:.2f} | Qty: {executed_qty:.6f} | Proceeds: ${proceeds:.2f}")
+                        
+                        # Track consecutive failures for this position
+                        if 'close_failures' not in position:
+                            position['close_failures'] = 0
+                        position['close_failures'] += 1
+                        
+                        # If failed 3+ times, force close with current market price (paper mode style)
+                        # This prevents positions from being stuck forever
+                        if position['close_failures'] >= 3:
+                            logger.error(f"🚨 CRITICAL: {symbol} close failed {position['close_failures']} times!")
+                            logger.error(f"🚨 FORCING POSITION CLOSE with simulated price to prevent stuck capital")
+                            logger.error(f"⚠️ CHECK BINANCE MANUALLY - Position may still be open on exchange!")
+                            
+                            # Use current_price for forced close (simulated)
+                            if position['action'] == 'BUY':
+                                exec_price = current_price * (1 - self.slippage_rate - self.spread_pct)
+                            else:
+                                exec_price = current_price * (1 + self.slippage_rate + self.spread_pct)
+                            
+                            position_value = position['quantity'] * exec_price
+                            fee = position_value * self.fee_rate
+                            proceeds = position_value - fee
+                            
+                            logger.warning(f"⚠️ FORCED CLOSE (SIMULATED): {symbol} @ ${exec_price:.2f}")
+                            # Continue to P&L calculation below
+                        else:
+                            # Not enough failures yet - retry next cycle
+                            logger.warning(f"⚠️ Will retry close on next cycle (failure {position['close_failures']}/3)")
+                            return False
+                    else:
+                        # Extract executed price from order response
+                        try:
+                            exec_price = float(order_result.get('fills', [{}])[0].get('price', current_price)) if order_result.get('fills') else current_price
+                            executed_qty = float(order_result.get('executedQty', position['quantity']))
+                            
+                            position_value = executed_qty * exec_price
+                            fee = position_value * self.fee_rate
+                            proceeds = position_value - fee
+                            
+                            logger.info(f"✅ LIVE CLOSE EXECUTED: {symbol} | Price: ${exec_price:.2f} | Qty: {executed_qty:.6f} | Proceeds: ${proceeds:.2f}")
+                        except Exception as e:
+                            # 🔴 CRITICAL: Order executed but parsing failed!
+                            logger.error(f"❌ CRITICAL: Close order executed but response parsing failed!")
+                            logger.error(f"❌ Order response: {order_result}")
+                            logger.error(f"❌ Exception: {e}")
+                            # Use fallback to still process the close
+                            if position['action'] == 'BUY':
+                                exec_price = current_price * (1 - self.slippage_rate - self.spread_pct)
+                            else:
+                                exec_price = current_price * (1 + self.slippage_rate + self.spread_pct)
+                            position_value = position['quantity'] * exec_price
+                            fee = position_value * self.fee_rate
+                            proceeds = position_value - fee
+                            logger.warning(f"⚠️ Using fallback price for close: ${exec_price:.2f}")
                     
                 else:
                     # ✅ PAPER TRADING: Simulate close with realistic costs
