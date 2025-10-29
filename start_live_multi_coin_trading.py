@@ -1248,10 +1248,13 @@ class UltimateHybridBot:
         try:
             strategy = STRATEGIES[strategy_name]
             
+            # 🔧 FIX: Use CURRENT total equity, not initial capital!
+            # This allows position sizes to scale with P&L (grow when winning, shrink when losing)
+            total_equity = self.current_capital + self.reserved_capital
+            
             # Available capital for this strategy
-            # 🔧 FIX: current_capital already excludes reserved capital, don't double-count!
-            available_capital = self.current_capital  # Not minus reserved!
-            strategy_capital = self.initial_capital * strategy['capital_pct']
+            available_capital = self.current_capital  # Free capital
+            strategy_capital = total_equity * strategy['capital_pct']  # Use current equity, not initial!
             
             # Use smaller of the two
             capital_to_use = min(available_capital, strategy_capital)
@@ -1372,119 +1375,135 @@ class UltimateHybridBot:
                 return False
     
     def close_position(self, position_key, current_price, reason):
-        """Close an existing position"""
-        try:
-            position = self.positions[position_key]
-            symbol = position['symbol']
-            strategy_name = position['strategy']
-            
-            # Execute close
-            exec_price = current_price * (1 - self.slippage_rate) if position['action'] == 'BUY' else current_price * (1 + self.slippage_rate)
-            position_value = position['quantity'] * exec_price
-            fee = position_value * self.fee_rate
-            proceeds = position_value - fee
-            
-            # Calculate P&L
-            if position['action'] == 'BUY':
-                pnl = proceeds - (position['quantity'] * position['entry_price'])
-            else:
-                pnl = (position['quantity'] * position['entry_price']) - proceeds
-            
-            pnl_pct = (pnl / (position['quantity'] * position['entry_price'])) * 100
-            
-            # Update capital
-            self.current_capital += proceeds
-            # 🔧 FIX: Use stored position_value for accurate capital tracking
-            self.reserved_capital -= position.get('position_value', position['quantity'] * position['entry_price'])
-            
-            # Update strategy stats
-            self.strategy_stats[strategy_name]['trades'] += 1
-            self.strategy_stats[strategy_name]['profit'] += pnl
-            if pnl > 0:
-                self.strategy_stats[strategy_name]['wins'] += 1
-            else:
-                self.strategy_stats[strategy_name]['losses'] += 1
-            
-            wins = self.strategy_stats[strategy_name]['wins']
-            total = self.strategy_stats[strategy_name]['trades']
-            self.strategy_stats[strategy_name]['win_rate'] = (wins / total * 100) if total > 0 else 0
-            
-            # Detect market condition at exit
-            market_condition_exit = self.detect_market_condition(symbol)
-            
-            # Calculate hold duration
-            hold_duration = (datetime.now() - position['entry_time']).total_seconds() / 60  # minutes
-            
-            # Log close with full details
-            trade = {
-                'timestamp': datetime.now(),
-                'symbol': symbol,
-                'strategy': strategy_name,
-                'action': 'CLOSE',
-                'quantity': position['quantity'],
-                'price': exec_price,
-                'entry_price': position['entry_price'],
-                'entry_time': position['entry_time'],
-                'entry_reason': position['reason'],
-                'exit_reason': reason,
-                'fee': fee,
-                'pnl': pnl,
-                'pnl_pct': pnl_pct,
-                'hold_duration': hold_duration,
-                'market_condition_exit': market_condition_exit,
-                'stop_loss': position['stop_loss'],
-                'take_profit': position['take_profit'],
-                'position_key': position_key
-            }
-            self.trades.append(trade)
-            
-            # Update analytics
-            date_str = datetime.now().strftime('%Y-%m-%d')
-            self.analytics.update_daily_stats(date_str, pnl, self.current_capital + self.reserved_capital)
-            self.analytics.update_drawdown(self.current_capital + self.reserved_capital)
-            
-            # Save to CSV for persistence
-            csv_trade = {
-                'timestamp': datetime.now().isoformat(),
-                'symbol': symbol,
-                'strategy': strategy_name,
-                'action': position['action'],
-                'entry_price': f"{position['entry_price']:.8f}",
-                'exit_price': f"{exec_price:.8f}",
-                'quantity': f"{position['quantity']:.8f}",
-                'pnl': f"{pnl:.4f}",
-                'pnl_pct': f"{pnl_pct:.4f}",
-                'fees': f"{fee:.4f}",
-                'entry_reason': position['reason'],
-                'exit_reason': reason,
-                'confidence': position['confidence'],
-                'entry_market_condition': position.get('market_condition', 'N/A'),
-                'exit_market_condition': market_condition_exit,
-                'hold_duration_hours': f"{hold_duration/60:.2f}",
-                'stop_loss': f"{position['stop_loss']:.8f}",
-                'take_profit': f"{position['take_profit']:.8f}"
-            }
-            self.save_trade_to_csv(csv_trade)
-            
-            hold_time = (datetime.now() - position['entry_time']).total_seconds() / 60
-            
-            emoji = "🎉" if pnl > 0 else "❌"
-            logger.info(f"{emoji} CLOSED | {symbol} | {strategy_name} | PnL: ${pnl:.2f} ({pnl_pct:+.2f}%) | Hold: {hold_time:.0f}min | {reason}")
-            
-            # Remove position
-            del self.positions[position_key]
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error closing position: {e}")
-            return False
+        """Close an existing position with thread safety"""
+        # 🔧 FIX: Thread-safe position closing
+        with self.data_lock:
+            try:
+                if position_key not in self.positions:
+                    logger.warning(f"Position {position_key} not found, may have been closed already")
+                    return False
+                
+                position = self.positions[position_key]
+                symbol = position['symbol']
+                strategy_name = position['strategy']
+                
+                # Execute close
+                exec_price = current_price * (1 - self.slippage_rate) if position['action'] == 'BUY' else current_price * (1 + self.slippage_rate)
+                position_value = position['quantity'] * exec_price
+                fee = position_value * self.fee_rate
+                proceeds = position_value - fee
+                
+                # Calculate P&L
+                if position['action'] == 'BUY':
+                    pnl = proceeds - (position['quantity'] * position['entry_price'])
+                else:
+                    pnl = (position['quantity'] * position['entry_price']) - proceeds
+                
+                # 🔧 FIX: Validate entry_price before division
+                entry_value = position['quantity'] * position['entry_price']
+                if entry_value > 0:
+                    pnl_pct = (pnl / entry_value) * 100
+                else:
+                    pnl_pct = 0.0
+                    logger.error(f"Invalid entry_value for {symbol}, using 0% P&L")
+                
+                # Update capital
+                self.current_capital += proceeds
+                # 🔧 FIX: Use stored position_value for accurate capital tracking
+                self.reserved_capital -= position.get('position_value', position['quantity'] * position['entry_price'])
+                
+                # Update strategy stats
+                self.strategy_stats[strategy_name]['trades'] += 1
+                self.strategy_stats[strategy_name]['profit'] += pnl
+                if pnl > 0:
+                    self.strategy_stats[strategy_name]['wins'] += 1
+                else:
+                    self.strategy_stats[strategy_name]['losses'] += 1
+                
+                wins = self.strategy_stats[strategy_name]['wins']
+                total = self.strategy_stats[strategy_name]['trades']
+                self.strategy_stats[strategy_name]['win_rate'] = (wins / total * 100) if total > 0 else 0
+                
+                # Detect market condition at exit
+                market_condition_exit = self.detect_market_condition(symbol)
+                
+                # Calculate hold duration
+                hold_duration = (datetime.now() - position['entry_time']).total_seconds() / 60  # minutes
+                
+                # Log close with full details
+                trade = {
+                    'timestamp': datetime.now(),
+                    'symbol': symbol,
+                    'strategy': strategy_name,
+                    'action': 'CLOSE',
+                    'quantity': position['quantity'],
+                    'price': exec_price,
+                    'entry_price': position['entry_price'],
+                    'entry_time': position['entry_time'],
+                    'entry_reason': position['reason'],
+                    'exit_reason': reason,
+                    'fee': fee,
+                    'pnl': pnl,
+                    'pnl_pct': pnl_pct,
+                    'hold_duration': hold_duration,
+                    'market_condition_exit': market_condition_exit,
+                    'stop_loss': position['stop_loss'],
+                    'take_profit': position['take_profit'],
+                    'position_key': position_key
+                }
+                self.trades.append(trade)
+                
+                # Update analytics
+                date_str = datetime.now().strftime('%Y-%m-%d')
+                self.analytics.update_daily_stats(date_str, pnl, self.current_capital + self.reserved_capital)
+                self.analytics.update_drawdown(self.current_capital + self.reserved_capital)
+                
+                # Save to CSV for persistence
+                csv_trade = {
+                    'timestamp': datetime.now().isoformat(),
+                    'symbol': symbol,
+                    'strategy': strategy_name,
+                    'action': position['action'],
+                    'entry_price': f"{position['entry_price']:.8f}",
+                    'exit_price': f"{exec_price:.8f}",
+                    'quantity': f"{position['quantity']:.8f}",
+                    'pnl': f"{pnl:.4f}",
+                    'pnl_pct': f"{pnl_pct:.4f}",
+                    'fees': f"{fee:.4f}",
+                    'entry_reason': position['reason'],
+                    'exit_reason': reason,
+                    'confidence': position['confidence'],
+                    'entry_market_condition': position.get('market_condition', 'N/A'),
+                    'exit_market_condition': market_condition_exit,
+                    'hold_duration_hours': f"{hold_duration/60:.2f}",
+                    'stop_loss': f"{position['stop_loss']:.8f}",
+                    'take_profit': f"{position['take_profit']:.8f}"
+                }
+                self.save_trade_to_csv(csv_trade)
+                
+                hold_time = (datetime.now() - position['entry_time']).total_seconds() / 60
+                
+                emoji = "🎉" if pnl > 0 else "❌"
+                logger.info(f"{emoji} CLOSED | {symbol} | {strategy_name} | PnL: ${pnl:.2f} ({pnl_pct:+.2f}%) | Hold: {hold_time:.0f}min | {reason}")
+                
+                # Remove position
+                del self.positions[position_key]
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error closing position: {e}")
+                return False
     
     def manage_positions(self):
-        """Check and manage all open positions"""
+        """Check and manage all open positions with thread safety"""
         positions_to_close = []
         
-        for position_key, position in self.positions.items():
+        # 🔧 FIX: Create a snapshot of positions to avoid iteration issues
+        with self.data_lock:
+            positions_snapshot = dict(self.positions)
+        
+        for position_key, position in positions_snapshot.items():
             try:
                 symbol = position['symbol']
                 strategy_name = position['strategy']
@@ -1590,14 +1609,29 @@ class UltimateHybridBot:
     def run_trading_cycle(self):
         """Main trading logic"""
         try:
-            # 🔧 CRITICAL SAFETY: Daily Loss Limit Protection
+            # 🔧 CRITICAL SAFETY: Daily Loss Limit Protection (Including Unrealized P&L)
             DAILY_LOSS_LIMIT = 200  # $200 max loss per day
             today_str = datetime.now().strftime('%Y-%m-%d')
-            today_pnl = self.analytics.daily_stats.get(today_str, {}).get('pnl', 0)
+            today_realized_pnl = self.analytics.daily_stats.get(today_str, {}).get('pnl', 0)
             
-            if today_pnl < -DAILY_LOSS_LIMIT:
-                logger.warning(f"🛑 DAILY LOSS LIMIT HIT! Loss today: ${today_pnl:.2f} | Limit: ${DAILY_LOSS_LIMIT}")
-                logger.warning(f"⏸️  Pausing new trades for today. Managing existing positions only.")
+            # Calculate unrealized P&L from open positions
+            unrealized_pnl = 0
+            with self.data_lock:
+                for pos in self.positions.values():
+                    current_price = self.get_current_price(pos['symbol'])
+                    if current_price:
+                        if pos['action'] == 'BUY':
+                            unrealized_pnl += (current_price - pos['entry_price']) * pos['quantity']
+                        else:
+                            unrealized_pnl += (pos['entry_price'] - current_price) * pos['quantity']
+            
+            # Total P&L = Realized + Unrealized
+            today_total_pnl = today_realized_pnl + unrealized_pnl
+            
+            if today_total_pnl < -DAILY_LOSS_LIMIT:
+                logger.warning(f"🛑 DAILY LOSS LIMIT HIT!")
+                logger.warning(f"   Realized: ${today_realized_pnl:.2f} | Unrealized: ${unrealized_pnl:.2f} | Total: ${today_total_pnl:.2f}")
+                logger.warning(f"   Limit: ${DAILY_LOSS_LIMIT} | ⏸️  Pausing new trades for today.")
                 # Still manage positions (close losing trades, let winners run)
                 self.manage_positions()
                 self.print_status()
