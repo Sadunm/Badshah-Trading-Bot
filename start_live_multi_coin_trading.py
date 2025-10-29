@@ -1424,9 +1424,9 @@ class UltimateHybridBot:
                 else:
                     current_gain_pct = ((position['entry_price'] - current_price) / position['entry_price']) * 100
                 
-                # ⚡ NEW LOGIC: Only exit early if SIGNIFICANT profit AND low confidence
-                # Don't exit at tiny 0.3% profits - let winners run!
-                if current_gain_pct >= 1.5:  # ✅ At least 1.5% profit (was 0.3%)
+                # ⚡ ARBITRAGE-STYLE EXIT: Lock tiny profits immediately!
+                # User wants INSTANT profit-taking, no waiting!
+                if current_gain_pct >= 0.3:  # ✅ Lock at 0.3%+ profit!
                     confidence, details = self.calculate_target_confidence(
                         symbol, 
                         current_price, 
@@ -1439,16 +1439,38 @@ class UltimateHybridBot:
                     position['target_confidence'] = confidence
                     position['confidence_details'] = details
                     
-                    # DECISION: Only exit if confidence VERY low (<60%) AND profit good
-                    # This prevents early exits and lets winners run to target!
-                    if confidence < 60 and current_gain_pct >= 2.0:  # ✅ Stricter rules!
-                        reason = f"Smart Lock ({confidence}% confidence, +{current_gain_pct:.2f}%)"
-                        logger.info(f"🔒 LOCKING PROFIT: {symbol} | Confidence: {confidence}% < 60% | Gain: +{current_gain_pct:.2f}%")
-                        positions_to_close.append((position_key, current_price, reason))
-                        continue
-                    else:
-                        # Confidence decent or not enough profit yet - LET IT RUN!
-                        logger.debug(f"⏳ LETTING IT RUN: {symbol} | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}%")
+                    # AGGRESSIVE PROFIT LOCKING LOGIC:
+                    # - Tiny profit (0.3-0.8%) + low confidence → LOCK IT!
+                    # - Medium profit (0.8-1.5%) + medium confidence → LOCK IT!
+                    # - Good profit (1.5%+) + high confidence → Let it run to target
+                    
+                    if current_gain_pct >= 0.3 and current_gain_pct < 0.8:
+                        # TINY profit: Lock if confidence < 70%
+                        if confidence < 70:
+                            reason = f"Quick Lock ({confidence}% conf, +{current_gain_pct:.2f}%)"
+                            logger.info(f"🔒 QUICK LOCK: {symbol} | Tiny Profit | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}%")
+                            positions_to_close.append((position_key, current_price, reason))
+                            continue
+                    
+                    elif current_gain_pct >= 0.8 and current_gain_pct < 1.5:
+                        # SMALL profit: Lock if confidence < 65%
+                        if confidence < 65:
+                            reason = f"Smart Lock ({confidence}% conf, +{current_gain_pct:.2f}%)"
+                            logger.info(f"🔒 SMART LOCK: {symbol} | Small Profit | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}%")
+                            positions_to_close.append((position_key, current_price, reason))
+                            continue
+                    
+                    elif current_gain_pct >= 1.5:
+                        # GOOD profit: Only lock if confidence VERY low (< 60%)
+                        # Otherwise let it run to target!
+                        if confidence < 60:
+                            reason = f"Conservative Lock ({confidence}% conf, +{current_gain_pct:.2f}%)"
+                            logger.info(f"🔒 LOCKING PROFIT: {symbol} | Good Profit | Confidence: {confidence}% < 60% | Gain: +{current_gain_pct:.2f}%")
+                            positions_to_close.append((position_key, current_price, reason))
+                            continue
+                        else:
+                            # High confidence - LET IT RUN TO TARGET!
+                            logger.debug(f"⏳ LETTING IT RUN: {symbol} | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}% → Target!")
                 
                 # ==================================================================
                 # TRADITIONAL EXITS (Priority #2)
