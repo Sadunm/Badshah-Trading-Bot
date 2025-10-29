@@ -28,6 +28,12 @@ class PerformanceMetrics:
         
         initial = equity_curve.iloc[0]
         final = equity_curve.iloc[-1]
+        
+        # 🔥 BUG FIX: Check for zero initial capital before division!
+        if initial == 0:
+            logger.warning("Initial capital is zero, cannot calculate return")
+            return 0.0
+        
         return (final - initial) / initial
     
     def calculate_annual_return(self, equity_curve: pd.Series, periods_per_year: int = 252) -> float:
@@ -56,7 +62,9 @@ class PerformanceMetrics:
         if len(returns) < 2:
             return 0.0
         
-        annual_return = self.calculate_annual_return(returns, periods_per_year)
+        # 🔥 BUG FIX: Calculate annual return from returns, not equity curve!
+        # returns.mean() gives average return per period
+        annual_return = returns.mean() * periods_per_year
         volatility = self.calculate_volatility(returns, periods_per_year)
         
         if volatility == 0:
@@ -69,7 +77,8 @@ class PerformanceMetrics:
         if len(returns) < 2:
             return 0.0
         
-        annual_return = self.calculate_annual_return(returns, periods_per_year)
+        # 🔥 BUG FIX: Calculate annual return from returns, not equity curve!
+        annual_return = returns.mean() * periods_per_year
         downside_returns = returns[returns < 0]
         
         if len(downside_returns) == 0:
@@ -93,6 +102,10 @@ class PerformanceMetrics:
         
         # Calculate running maximum
         running_max = equity_curve.expanding().max()
+        
+        # 🔥 BUG FIX: Avoid division by zero if running_max contains zeros!
+        # Replace zeros with a small value to avoid division errors
+        running_max = running_max.replace(0, 1e-10)
         
         # Calculate drawdown
         drawdown = (equity_curve - running_max) / running_max
