@@ -1929,25 +1929,9 @@ class UltimateHybridBot:
                     'position_value': position_value  # 🔧 FIX: Store original position value for accurate capital tracking
                 }
                 
-                # Log trade with market condition
-                trade = {
-                    'timestamp': datetime.now(),
-                    'symbol': symbol,
-                    'strategy': strategy_name,
-                    'action': action,
-                    'quantity': quantity,
-                    'price': exec_price,
-                    'fee': fee,
-                    'reason': reason,
-                    'confidence': confidence,
-                    'market_condition': market_condition,
-                    'position_key': position_key  # Link to position for history
-                }
-                self.trades.append(trade)
-                
-                # 🎯 OPTIMIZATION: Prevent memory leak - cap trades list at 1000
-                if len(self.trades) > 1000:
-                    self.trades = self.trades[-1000:]
+                # 🔧 CRITICAL FIX: Don't add to trades list on OPEN!
+                # Trades should ONLY be added on CLOSE when we have P&L
+                # This prevents duplicate entries and incorrect P&L calculation
                 
                 # 🎯 ROUND 7 FIX #6: Increment daily trade counter
                 self.daily_trade_count += 1
@@ -2545,15 +2529,17 @@ def get_stats():
     global trading_bot, trading_stats
     
     if trading_bot:
-        wins = sum(1 for t in trading_bot.trades if t.get('pnl', 0) > 0)
-        total = len([t for t in trading_bot.trades if 'pnl' in t])
+        # 🔧 CRITICAL FIX: Only count CLOSED trades (with P&L)
+        closed_trades = [t for t in trading_bot.trades if 'pnl' in t]
+        wins = sum(1 for t in closed_trades if t.get('pnl', 0) > 0)
+        total = len(closed_trades)
         
         # Convert start_time to string if it's a datetime object
         start_time_str = trading_stats['start_time']
         if hasattr(start_time_str, 'isoformat'):
             start_time_str = start_time_str.isoformat()
         
-        # Calculate P&L
+        # Calculate P&L (Current total equity - Initial capital)
         total_pnl = trading_bot.current_capital + trading_bot.reserved_capital - trading_bot.initial_capital
         
         # Debug logging
@@ -2565,7 +2551,7 @@ def get_stats():
         
         stats_response = {
             'start_time': start_time_str,
-            'total_trades': len(trading_bot.trades),
+            'total_trades': total,  # 🔧 FIX: Only closed trades count!
             'closed_trades': total,
             'win_rate': (wins / total * 100) if total > 0 else 0,
             'total_pnl': total_pnl,
