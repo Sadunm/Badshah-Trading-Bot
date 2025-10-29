@@ -620,7 +620,15 @@ class UltimateHybridBot:
         # 🔥 CRITICAL: Load Binance symbol info (precision, filters, etc.)
         logger.info(f"🔄 Loading Binance symbol info...")
         if not self.load_symbol_info():
-            logger.error(f"❌ Failed to load symbol info - some features may not work!")
+            if LIVE_TRADING_MODE:
+                # 🔴 CRITICAL: Cannot run LIVE trading without symbol info!
+                logger.error(f"❌ FATAL: Failed to load symbol info in LIVE mode!")
+                logger.error(f"❌ All live orders will FAIL without proper precision/filters!")
+                logger.error(f"❌ BOT CANNOT START! Fix your API connection and restart.")
+                raise RuntimeError("Cannot start LIVE trading without Binance symbol info")
+            else:
+                # ✅ Paper mode can continue with default precision
+                logger.warning(f"⚠️ Failed to load symbol info - using default precision (paper mode OK)")
         
         # 🚨 LIVE/PAPER MODE INDICATOR
         if LIVE_TRADING_MODE:
@@ -1935,18 +1943,24 @@ class UltimateHybridBot:
         logger.info(f"{'='*70}")
         
         opportunities = []
+        symbols_scanned = 0
+        symbols_failed = 0
         
         for symbol in COIN_UNIVERSE:
             try:
                 # Get data
                 closes, highs, lows, volumes, opens = self.get_klines(symbol, '5m', 200)
                 if closes is None:
+                    symbols_failed += 1
                     continue
                 
                 # Calculate indicators
                 indicators = self.calculate_indicators(closes, highs, lows, volumes)
                 if indicators is None:
+                    symbols_failed += 1
                     continue
+                
+                symbols_scanned += 1
                 
                 # Detect S/R levels
                 sr_levels = self.detect_support_resistance(highs, lows, closes)
@@ -1992,11 +2006,29 @@ class UltimateHybridBot:
                 
             except Exception as e:
                 logger.error(f"Error scanning {symbol}: {e}")
+                symbols_failed += 1
                 continue
         
         # 🎯 OPTIMIZATION: Single sleep at end instead of 22 individual sleeps
         # Savings: 2.2s → 0.5s = 340% faster scanning!
         time.sleep(0.5)
+        
+        # 🔥 CRITICAL: API OUTAGE DETECTION
+        total_symbols = len(COIN_UNIVERSE)
+        success_rate = (symbols_scanned / total_symbols * 100) if total_symbols > 0 else 0
+        
+        logger.info(f"📊 Scan Results: {symbols_scanned}/{total_symbols} successful ({success_rate:.1f}%), {symbols_failed} failed")
+        
+        if success_rate < 30:  # Less than 30% success = likely API outage!
+            logger.error(f"🚨 CRITICAL: API OUTAGE DETECTED!")
+            logger.error(f"   Only {symbols_scanned}/{total_symbols} symbols scanned successfully")
+            logger.error(f"   Binance API may be down or rate limits exceeded")
+            logger.error(f"   Returning empty opportunities to pause trading")
+            return []  # Return empty list to prevent trading during outage
+        elif success_rate < 70:
+            logger.warning(f"⚠️ WARNING: High failure rate ({100-success_rate:.1f}%)")
+            logger.warning(f"   API may be experiencing issues or rate limiting")
+            logger.warning(f"   Proceeding with caution...")
         
         # Sort by score
         opportunities.sort(key=lambda x: x[1], reverse=True)
@@ -2560,31 +2592,53 @@ class UltimateHybridBot:
                 if quantity <= 0:
                     return False
                 
-                # 🔥 CRITICAL: LIVE vs PAPER ORDER EXECUTION
+                # 🔥 CRITICAL: Pre-calculate ALL data BEFORE placing live order!
+                # This prevents race condition where order is placed but position not tracked
                 strategy = STRATEGIES[strategy_name]
                 
+                # Pre-detect market condition (before live order!)
+                try:
+                    market_condition = self.detect_market_condition(symbol)
+                except Exception as e:
+                    logger.error(f"❌ Failed to detect market condition for {symbol}: {e}")
+                    market_condition = "UNKNOWN"
+                
+                # 🔥 NOW PLACE ORDER (last step after all prep is done)
                 if LIVE_TRADING_MODE:
                     # 🔴 LIVE TRADING: Place REAL order on Binance!
                     logger.warning(f"🔥 ATTEMPTING LIVE ORDER: {action} {quantity:.6f} {symbol}")
                     
-                    # Place live order
+                    # Place live order - this is the CRITICAL STEP!
                     order_result = self.place_live_order(symbol, action, quantity)
                     
                     if not order_result:
                         logger.error(f"❌ LIVE ORDER FAILED for {symbol}, aborting position")
                         return False
                     
+                    # 🔥 ORDER IS NOW ON BINANCE! Must track it!
                     # Extract executed price and quantity from order response
-                    exec_price = float(order_result.get('fills', [{}])[0].get('price', price)) if order_result.get('fills') else price
-                    executed_qty = float(order_result.get('executedQty', quantity))
-                    
-                    # Use executed values (actual fill)
-                    quantity = executed_qty
-                    position_value = quantity * exec_price
-                    fee = position_value * self.fee_rate  # Binance fee already deducted
-                    total_cost = position_value + fee
-                    
-                    logger.info(f"✅ LIVE ORDER EXECUTED: {symbol} | Price: ${exec_price:.2f} | Qty: {quantity:.6f} | Cost: ${total_cost:.2f}")
+                    try:
+                        exec_price = float(order_result.get('fills', [{}])[0].get('price', price)) if order_result.get('fills') else price
+                        executed_qty = float(order_result.get('executedQty', quantity))
+                        
+                        # Use executed values (actual fill)
+                        quantity = executed_qty
+                        position_value = quantity * exec_price
+                        fee = position_value * self.fee_rate  # Binance fee already deducted
+                        total_cost = position_value + fee
+                        
+                        logger.info(f"✅ LIVE ORDER EXECUTED: {symbol} | Price: ${exec_price:.2f} | Qty: {quantity:.6f} | Cost: ${total_cost:.2f}")
+                    except Exception as e:
+                        # 🔴 CRITICAL ERROR: Order is filled but we can't parse response!
+                        logger.error(f"❌ CRITICAL: Live order filled but failed to parse response!")
+                        logger.error(f"❌ Order response: {order_result}")
+                        logger.error(f"❌ Exception: {e}")
+                        # Use fallback values to still track the position
+                        exec_price = price
+                        position_value = quantity * exec_price
+                        fee = position_value * self.fee_rate
+                        total_cost = position_value + fee
+                        logger.warning(f"⚠️ Using fallback values to track position: {symbol}")
                     
                 else:
                     # ✅ PAPER TRADING: Simulate order with realistic costs
@@ -2601,10 +2655,7 @@ class UltimateHybridBot:
                 self.current_capital -= total_cost
                 self.reserved_capital += position_value
                 
-                # Detect market condition at entry
-                market_condition = self.detect_market_condition(symbol)
-                
-                # Create position
+                # Create position (safely after order is placed)
                 self.positions[position_key] = {
                     'symbol': symbol,
                     'strategy': strategy_name,
@@ -3108,16 +3159,34 @@ class UltimateHybridBot:
             
             # Calculate unrealized P&L from open positions
             unrealized_pnl = 0
+            positions_checked = 0
+            positions_failed = 0
+            
             with self.data_lock:
+                total_positions = len(self.positions)
                 for pos in self.positions.values():
                     current_price = self.get_current_price(pos['symbol'])
-                    if current_price:
+                    if current_price and current_price > 0:
                         if pos['action'] == 'BUY':
                             unrealized_pnl += (current_price - pos['entry_price']) * pos['quantity']
                         else:
                             unrealized_pnl += (pos['entry_price'] - current_price) * pos['quantity']
+                        positions_checked += 1
+                    else:
+                        positions_failed += 1
             
-            # Total P&L = Realized + Unrealized
+            # 🔥 CRITICAL: If we couldn't get prices for most positions, skip loss limit check!
+            # This prevents false positives when API is temporarily down
+            if total_positions > 0 and positions_failed >= (total_positions * 0.5):
+                logger.error(f"⚠️ WARNING: Could not fetch prices for {positions_failed}/{total_positions} positions!")
+                logger.error(f"⚠️ API may be down! Skipping daily loss limit check (unreliable)")
+                logger.error(f"⚠️ Still managing positions normally...")
+                # Continue to manage_positions but don't check loss limit
+                self.manage_positions()
+                self.print_status()
+                return
+            
+            # Total P&L = Realized + Unrealized (only if we have reliable data)
             today_total_pnl = today_realized_pnl + unrealized_pnl
             
             if today_total_pnl < -DAILY_LOSS_LIMIT:
