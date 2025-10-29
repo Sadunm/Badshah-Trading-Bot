@@ -2,6 +2,7 @@
 """
 🔥 ULTIMATE HYBRID MULTI-STRATEGY TRADING BOT 🔥
 Implements 8+ professional strategies with auto market detection
+🚀 BINANCE PRODUCTION-READY with full order execution support
 """
 
 import os
@@ -13,10 +14,14 @@ import logging
 import numpy as np
 import talib
 import csv
+import hmac
+import hashlib
+from urllib.parse import urlencode
 from datetime import datetime, timedelta
 from threading import Thread, Lock  # 🔧 FIX: Added Lock for thread safety
 from flask import Flask, jsonify, render_template_string
 from collections import defaultdict, deque  # 🎯 OPTIMIZATION: Added deque for efficient memory management
+from decimal import Decimal, ROUND_DOWN  # 🔥 For precise quantity formatting
 
 # Create necessary directories
 os.makedirs('logs', exist_ok=True)
@@ -525,7 +530,14 @@ class UltimateHybridBot:
     def __init__(self, api_key, secret_key, initial_capital=10000):
         self.api_key = api_key
         self.secret_key = secret_key
-        self.base_url = 'https://testnet.binance.vision'
+        
+        # 🔥 CRITICAL: Use PRODUCTION URL when LIVE, TESTNET when PAPER
+        if LIVE_TRADING_MODE:
+            self.base_url = 'https://api.binance.com'  # 🔴 PRODUCTION
+            logger.warning("🔴 Using BINANCE PRODUCTION API")
+        else:
+            self.base_url = 'https://testnet.binance.vision'  # ✅ TESTNET
+            logger.info("✅ Using BINANCE TESTNET API")
         
         # 🚀 API KEY ROTATION SYSTEM
         self.api_keys = API_KEYS
@@ -539,6 +551,10 @@ class UltimateHybridBot:
         # 🎯 OPTIMIZATION: Price caching to reduce API calls by 70%
         self.price_cache = {}  # {symbol: (price, timestamp)}
         self.cache_ttl = 10  # Cache valid for 10 seconds
+        
+        # 🔥 BINANCE SYMBOL INFO CACHE (for precision, min notional, lot size)
+        self.symbol_info_cache = {}  # {symbol: {baseAssetPrecision, quoteAssetPrecision, filters}}
+        self.symbol_info_loaded = False
         
         # 🚀 DYNAMIC CAPITAL ALLOCATION
         self.current_market_regime = 'NEUTRAL'
@@ -600,6 +616,11 @@ class UltimateHybridBot:
         self.load_trade_history()
         
         logger.info(f"🔥 ULTIMATE HYBRID BOT INITIALIZED")
+        
+        # 🔥 CRITICAL: Load Binance symbol info (precision, filters, etc.)
+        logger.info(f"🔄 Loading Binance symbol info...")
+        if not self.load_symbol_info():
+            logger.error(f"❌ Failed to load symbol info - some features may not work!")
         
         # 🚨 LIVE/PAPER MODE INDICATOR
         if LIVE_TRADING_MODE:
@@ -835,6 +856,338 @@ class UltimateHybridBot:
         self.api_call_counts[self.current_api_index] += 1
         
         return selected_api
+    
+    # ========================================================================
+    # 🔥 BINANCE-SPECIFIC HELPER METHODS (LIVE TRADING READY) 🔥
+    # ========================================================================
+    
+    def load_symbol_info(self):
+        """
+        🔥 CRITICAL: Load Binance symbol info for ALL coins
+        This is required for:
+        - Quantity precision (LOT_SIZE filter)
+        - Price precision (PRICE_FILTER)
+        - Minimum notional (MIN_NOTIONAL filter)
+        
+        Called ONCE at bot startup to cache all symbol info
+        """
+        if self.symbol_info_loaded:
+            return True
+        
+        try:
+            logger.info("🔄 Loading Binance symbol info...")
+            url = f"{self.base_url}/api/v3/exchangeInfo"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                symbols_loaded = 0
+                
+                for symbol_data in data['symbols']:
+                    symbol = symbol_data['symbol']
+                    
+                    # Only cache symbols we're trading
+                    if symbol in COIN_UNIVERSE:
+                        self.symbol_info_cache[symbol] = {
+                            'baseAssetPrecision': symbol_data['baseAssetPrecision'],
+                            'quoteAssetPrecision': symbol_data['quoteAssetPrecision'],
+                            'quotePrecision': symbol_data['quotePrecision'],
+                            'baseAsset': symbol_data['baseAsset'],
+                            'quoteAsset': symbol_data['quoteAsset'],
+                            'filters': {}
+                        }
+                        
+                        # Extract important filters
+                        for filter_data in symbol_data['filters']:
+                            filter_type = filter_data['filterType']
+                            
+                            if filter_type == 'LOT_SIZE':
+                                self.symbol_info_cache[symbol]['filters']['LOT_SIZE'] = {
+                                    'minQty': float(filter_data['minQty']),
+                                    'maxQty': float(filter_data['maxQty']),
+                                    'stepSize': float(filter_data['stepSize'])
+                                }
+                            elif filter_type == 'PRICE_FILTER':
+                                self.symbol_info_cache[symbol]['filters']['PRICE_FILTER'] = {
+                                    'minPrice': float(filter_data['minPrice']),
+                                    'maxPrice': float(filter_data['maxPrice']),
+                                    'tickSize': float(filter_data['tickSize'])
+                                }
+                            elif filter_type == 'MIN_NOTIONAL' or filter_type == 'NOTIONAL':
+                                # Binance uses MIN_NOTIONAL or NOTIONAL depending on symbol
+                                min_notional = float(filter_data.get('minNotional', filter_data.get('notional', 10.0)))
+                                self.symbol_info_cache[symbol]['filters']['MIN_NOTIONAL'] = {
+                                    'minNotional': min_notional
+                                }
+                        
+                        symbols_loaded += 1
+                
+                self.symbol_info_loaded = True
+                logger.info(f"✅ Loaded symbol info for {symbols_loaded}/{len(COIN_UNIVERSE)} coins")
+                return True
+            else:
+                logger.error(f"❌ Failed to load symbol info: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error loading symbol info: {e}")
+            return False
+    
+    def format_quantity(self, symbol, quantity):
+        """
+        🔥 Format quantity according to Binance LOT_SIZE rules
+        
+        Example:
+        - BTC: 0.00100000 (5 decimals)
+        - ETH: 0.01000000 (2 decimals)
+        - DOGE: 1.00000000 (0 decimals for whole numbers)
+        """
+        if symbol not in self.symbol_info_cache:
+            logger.warning(f"⚠️ No symbol info for {symbol}, using default precision")
+            return round(quantity, 6)  # Default 6 decimals
+        
+        try:
+            lot_size = self.symbol_info_cache[symbol]['filters'].get('LOT_SIZE', {})
+            step_size = lot_size.get('stepSize', 0.00000001)
+            min_qty = lot_size.get('minQty', 0.00000001)
+            max_qty = lot_size.get('maxQty', 9000000000)
+            
+            # Round down to step size
+            precision = len(str(step_size).rstrip('0').split('.')[-1]) if '.' in str(step_size) else 0
+            formatted_qty = float(Decimal(str(quantity)).quantize(Decimal(str(step_size)), rounding=ROUND_DOWN))
+            
+            # Ensure within bounds
+            if formatted_qty < min_qty:
+                logger.warning(f"⚠️ Quantity {formatted_qty} below min {min_qty} for {symbol}")
+                return 0.0  # Signal insufficient quantity
+            if formatted_qty > max_qty:
+                formatted_qty = max_qty
+            
+            return formatted_qty
+            
+        except Exception as e:
+            logger.error(f"❌ Error formatting quantity for {symbol}: {e}")
+            return round(quantity, 6)
+    
+    def format_price(self, symbol, price):
+        """
+        🔥 Format price according to Binance PRICE_FILTER rules
+        """
+        if symbol not in self.symbol_info_cache:
+            logger.warning(f"⚠️ No symbol info for {symbol}, using default price precision")
+            return round(price, 2)  # Default 2 decimals
+        
+        try:
+            price_filter = self.symbol_info_cache[symbol]['filters'].get('PRICE_FILTER', {})
+            tick_size = price_filter.get('tickSize', 0.01)
+            
+            # Round to tick size
+            precision = len(str(tick_size).rstrip('0').split('.')[-1]) if '.' in str(tick_size) else 0
+            formatted_price = float(Decimal(str(price)).quantize(Decimal(str(tick_size)), rounding=ROUND_DOWN))
+            
+            return formatted_price
+            
+        except Exception as e:
+            logger.error(f"❌ Error formatting price for {symbol}: {e}")
+            return round(price, 2)
+    
+    def check_min_notional(self, symbol, quantity, price):
+        """
+        🔥 Check if order meets Binance MIN_NOTIONAL requirement
+        MIN_NOTIONAL = quantity * price (usually $10-$20)
+        """
+        if symbol not in self.symbol_info_cache:
+            logger.warning(f"⚠️ No symbol info for {symbol}, using default min notional $10")
+            min_notional = 10.0
+        else:
+            min_notional = self.symbol_info_cache[symbol]['filters'].get('MIN_NOTIONAL', {}).get('minNotional', 10.0)
+        
+        notional = quantity * price
+        
+        if notional < min_notional:
+            logger.warning(f"⚠️ Order notional ${notional:.2f} below minimum ${min_notional:.2f} for {symbol}")
+            return False
+        
+        return True
+    
+    def create_signed_request(self, endpoint, params, method='GET'):
+        """
+        🔥 Create signed request for Binance authenticated endpoints
+        Required for placing orders, checking balances, etc.
+        """
+        # Get current API key
+        api_creds = self.get_next_api_key()
+        
+        # Add timestamp
+        params['timestamp'] = int(time.time() * 1000)
+        
+        # Create signature
+        query_string = urlencode(params)
+        signature = hmac.new(
+            api_creds['secret'].encode('utf-8'),
+            query_string.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        params['signature'] = signature
+        
+        # Create headers
+        headers = {
+            'X-MBX-APIKEY': api_creds['key']
+        }
+        
+        # Make request
+        url = f"{self.base_url}{endpoint}"
+        
+        try:
+            if method == 'GET':
+                response = requests.get(url, params=params, headers=headers, timeout=10)
+            elif method == 'POST':
+                response = requests.post(url, params=params, headers=headers, timeout=10)
+            elif method == 'DELETE':
+                response = requests.delete(url, params=params, headers=headers, timeout=10)
+            else:
+                logger.error(f"❌ Unsupported HTTP method: {method}")
+                return None
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ Error in signed request: {e}")
+            return None
+    
+    def get_account_balance(self, asset='USDT'):
+        """
+        🔥 Get current balance for specified asset from Binance account
+        Used in LIVE mode to check if we have sufficient funds
+        """
+        try:
+            response = self.create_signed_request('/api/v3/account', {}, method='GET')
+            
+            if response and response.status_code == 200:
+                account_data = response.json()
+                
+                for balance in account_data.get('balances', []):
+                    if balance['asset'] == asset:
+                        free_balance = float(balance['free'])
+                        locked_balance = float(balance['locked'])
+                        total_balance = free_balance + locked_balance
+                        
+                        logger.info(f"💰 {asset} Balance: Free=${free_balance:.2f} | Locked=${locked_balance:.2f} | Total=${total_balance:.2f}")
+                        return {
+                            'free': free_balance,
+                            'locked': locked_balance,
+                            'total': total_balance
+                        }
+                
+                logger.warning(f"⚠️ Asset {asset} not found in account")
+                return None
+            else:
+                logger.error(f"❌ Failed to get account balance: {response.status_code if response else 'No response'}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error getting account balance: {e}")
+            return None
+    
+    def place_live_order(self, symbol, side, quantity, order_type='MARKET'):
+        """
+        🔥 CRITICAL: Place LIVE order on Binance
+        
+        This is the REAL DEAL - REAL MONEY!
+        
+        Args:
+            symbol: e.g. 'BTCUSDT'
+            side: 'BUY' or 'SELL'
+            quantity: Formatted quantity (already precision-checked)
+            order_type: 'MARKET' or 'LIMIT' (default: MARKET for fast execution)
+        
+        Returns:
+            Order response dict or None if failed
+        """
+        try:
+            # Format quantity and get current price
+            formatted_qty = self.format_quantity(symbol, quantity)
+            
+            if formatted_qty <= 0:
+                logger.error(f"❌ Invalid quantity for {symbol}: {quantity} -> {formatted_qty}")
+                return None
+            
+            # Get current price for notional check
+            current_price = self.get_current_price(symbol)
+            if not current_price:
+                logger.error(f"❌ Could not get price for {symbol}")
+                return None
+            
+            # Check MIN_NOTIONAL
+            if not self.check_min_notional(symbol, formatted_qty, current_price):
+                logger.error(f"❌ Order does not meet MIN_NOTIONAL for {symbol}")
+                return None
+            
+            # Create order parameters
+            params = {
+                'symbol': symbol,
+                'side': side,
+                'type': order_type,
+                'quantity': formatted_qty
+            }
+            
+            # For LIMIT orders, add price (not implemented yet - using MARKET only)
+            # if order_type == 'LIMIT':
+            #     params['price'] = self.format_price(symbol, price)
+            #     params['timeInForce'] = 'GTC'
+            
+            logger.info(f"🔥 PLACING LIVE ORDER: {side} {formatted_qty} {symbol} @ ~${current_price:.2f}")
+            logger.info(f"   Notional: ${formatted_qty * current_price:.2f}")
+            
+            # Execute order via signed request
+            response = self.create_signed_request('/api/v3/order', params, method='POST')
+            
+            if response and response.status_code == 200:
+                order_data = response.json()
+                logger.info(f"✅ LIVE ORDER FILLED: {order_data.get('orderId', 'N/A')}")
+                logger.info(f"   Status: {order_data.get('status', 'UNKNOWN')}")
+                logger.info(f"   Executed Qty: {order_data.get('executedQty', '0')}")
+                return order_data
+            else:
+                # 🔥 BINANCE-SPECIFIC ERROR HANDLING
+                if response:
+                    try:
+                        error_data = response.json()
+                        error_code = error_data.get('code', 'UNKNOWN')
+                        error_msg = error_data.get('msg', 'Unknown error')
+                        
+                        # Log specific Binance error codes
+                        logger.error(f"❌ BINANCE ERROR {error_code}: {error_msg}")
+                        
+                        # Handle common errors
+                        if error_code == -1013:  # LOT_SIZE filter
+                            logger.error(f"   💡 Quantity does not meet LOT_SIZE filter requirements")
+                        elif error_code == -1111:  # PRICE_FILTER
+                            logger.error(f"   💡 Price does not meet PRICE_FILTER requirements")
+                        elif error_code == -1010:  # MIN_NOTIONAL
+                            logger.error(f"   💡 Order value below MIN_NOTIONAL (usually $10-20)")
+                        elif error_code == -2010:  # Insufficient balance
+                            logger.error(f"   💡 INSUFFICIENT BALANCE! Check your account")
+                        elif error_code == -1003:  # Rate limit
+                            logger.error(f"   💡 RATE LIMIT HIT! Reduce trading frequency")
+                        elif error_code == -1021:  # Timestamp out of sync
+                            logger.error(f"   💡 TIMESTAMP ERROR! Check system time synchronization")
+                        
+                        return None
+                    except:
+                        logger.error(f"❌ LIVE ORDER FAILED: {response.status_code}")
+                        logger.error(f"   Raw response: {response.text}")
+                        return None
+                else:
+                    logger.error(f"❌ LIVE ORDER FAILED: No response from Binance")
+                    return None
+                
+        except Exception as e:
+            logger.error(f"❌ Exception placing live order: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
     
     # ========================================================================
     # DATA PERSISTENCE METHODS
@@ -2134,17 +2487,15 @@ class UltimateHybridBot:
             # Calculate quantity
             quantity = position_value / price
             
-            # Round based on price
-            if price > 1000:
-                quantity = round(quantity, 4)
-            elif price > 100:
-                quantity = round(quantity, 3)
-            elif price > 1:
-                quantity = round(quantity, 2)
-            else:
-                quantity = round(quantity, 1)
+            # 🔥 BINANCE-FRIENDLY: Format quantity according to LOT_SIZE filter
+            # This ensures the quantity meets Binance's precision requirements
+            formatted_qty = self.format_quantity(symbol, quantity)
             
-            return quantity
+            if formatted_qty <= 0:
+                logger.warning(f"⚠️ Formatted quantity is 0 for {symbol} (original: {quantity:.8f})")
+                return 0
+            
+            return formatted_qty
             
         except Exception as e:
             logger.error(f"Error calculating position size: {e}")
@@ -2209,19 +2560,44 @@ class UltimateHybridBot:
                 if quantity <= 0:
                     return False
                 
-                # Execute order with realistic costs (slippage + spread)
+                # 🔥 CRITICAL: LIVE vs PAPER ORDER EXECUTION
                 strategy = STRATEGIES[strategy_name]
-                # 🎯 OPTIMIZATION: Include bid-ask spread for realistic simulation
-                if action == 'BUY':
-                    exec_price = price * (1 + self.slippage_rate + self.spread_pct)  # Buy at ask + spread
+                
+                if LIVE_TRADING_MODE:
+                    # 🔴 LIVE TRADING: Place REAL order on Binance!
+                    logger.warning(f"🔥 ATTEMPTING LIVE ORDER: {action} {quantity:.6f} {symbol}")
+                    
+                    # Place live order
+                    order_result = self.place_live_order(symbol, action, quantity)
+                    
+                    if not order_result:
+                        logger.error(f"❌ LIVE ORDER FAILED for {symbol}, aborting position")
+                        return False
+                    
+                    # Extract executed price and quantity from order response
+                    exec_price = float(order_result.get('fills', [{}])[0].get('price', price)) if order_result.get('fills') else price
+                    executed_qty = float(order_result.get('executedQty', quantity))
+                    
+                    # Use executed values (actual fill)
+                    quantity = executed_qty
+                    position_value = quantity * exec_price
+                    fee = position_value * self.fee_rate  # Binance fee already deducted
+                    total_cost = position_value + fee
+                    
+                    logger.info(f"✅ LIVE ORDER EXECUTED: {symbol} | Price: ${exec_price:.2f} | Qty: {quantity:.6f} | Cost: ${total_cost:.2f}")
+                    
                 else:
-                    exec_price = price * (1 - self.slippage_rate - self.spread_pct)  # Sell at bid - spread
+                    # ✅ PAPER TRADING: Simulate order with realistic costs
+                    if action == 'BUY':
+                        exec_price = price * (1 + self.slippage_rate + self.spread_pct)  # Buy at ask + spread
+                    else:
+                        exec_price = price * (1 - self.slippage_rate - self.spread_pct)  # Sell at bid - spread
+                    
+                    position_value = quantity * exec_price
+                    fee = position_value * self.fee_rate
+                    total_cost = position_value + fee
                 
-                position_value = quantity * exec_price
-                fee = position_value * self.fee_rate
-                total_cost = position_value + fee
-                
-                # Deduct from capital
+                # Deduct from capital (both LIVE and PAPER)
                 self.current_capital -= total_cost
                 self.reserved_capital += position_value
                 
@@ -2273,18 +2649,41 @@ class UltimateHybridBot:
                 symbol = position['symbol']
                 strategy_name = position['strategy']
                 
-                # Execute close with realistic costs (slippage + spread)
-                # 🎯 OPTIMIZATION: Include bid-ask spread for realistic P&L
-                if position['action'] == 'BUY':
-                    # Closing BUY position = SELL at bid - spread
-                    exec_price = current_price * (1 - self.slippage_rate - self.spread_pct)
+                # 🔥 CRITICAL: LIVE vs PAPER CLOSE EXECUTION
+                if LIVE_TRADING_MODE:
+                    # 🔴 LIVE TRADING: Close with REAL order on Binance!
+                    close_side = 'SELL' if position['action'] == 'BUY' else 'BUY'
+                    logger.warning(f"🔥 ATTEMPTING LIVE CLOSE: {close_side} {position['quantity']:.6f} {symbol}")
+                    
+                    # Place live close order
+                    order_result = self.place_live_order(symbol, close_side, position['quantity'])
+                    
+                    if not order_result:
+                        logger.error(f"❌ LIVE CLOSE ORDER FAILED for {symbol}, position may be stuck!")
+                        return False
+                    
+                    # Extract executed price from order response
+                    exec_price = float(order_result.get('fills', [{}])[0].get('price', current_price)) if order_result.get('fills') else current_price
+                    executed_qty = float(order_result.get('executedQty', position['quantity']))
+                    
+                    position_value = executed_qty * exec_price
+                    fee = position_value * self.fee_rate
+                    proceeds = position_value - fee
+                    
+                    logger.info(f"✅ LIVE CLOSE EXECUTED: {symbol} | Price: ${exec_price:.2f} | Qty: {executed_qty:.6f} | Proceeds: ${proceeds:.2f}")
+                    
                 else:
-                    # Closing SELL position = BUY at ask + spread
-                    exec_price = current_price * (1 + self.slippage_rate + self.spread_pct)
-                
-                position_value = position['quantity'] * exec_price
-                fee = position_value * self.fee_rate
-                proceeds = position_value - fee
+                    # ✅ PAPER TRADING: Simulate close with realistic costs
+                    if position['action'] == 'BUY':
+                        # Closing BUY position = SELL at bid - spread
+                        exec_price = current_price * (1 - self.slippage_rate - self.spread_pct)
+                    else:
+                        # Closing SELL position = BUY at ask + spread
+                        exec_price = current_price * (1 + self.slippage_rate + self.spread_pct)
+                    
+                    position_value = position['quantity'] * exec_price
+                    fee = position_value * self.fee_rate
+                    proceeds = position_value - fee
                 
                 # Calculate P&L
                 if position['action'] == 'BUY':
