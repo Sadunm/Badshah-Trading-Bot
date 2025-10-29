@@ -343,3 +343,4 @@ Bot should auto-pause. If trading continues:
 **Bot Version:** Consistent Sniper Mode  
 **Status:** LIVE-READY ✅
 
+

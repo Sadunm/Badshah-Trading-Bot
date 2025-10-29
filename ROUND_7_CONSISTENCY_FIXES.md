@@ -279,3 +279,4 @@ if current_gain_pct < min_profit:
 
 Ready to implement? This will make bot **LIVE-READY!** 🎯
 
+
