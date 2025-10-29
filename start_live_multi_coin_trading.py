@@ -93,10 +93,17 @@ class PerformanceAnalytics:
         
         # Lower std_dev = higher consistency
         if std_dev == 0:
-            return 100
+            return 100  # Perfect consistency (all days same P&L)
+        
+        # 🔧 FIX: Handle avg_pnl = 0 case (break-even with volatility = low consistency)
+        if avg_pnl == 0:
+            # If break-even but with volatility, that's LOW consistency
+            # Use std_dev directly: higher std_dev = lower consistency
+            consistency = max(0, min(100, 100 - (std_dev * 5)))
+            return consistency
         
         # Consistency score: inverse of coefficient of variation
-        cv = abs(std_dev / avg_pnl) if avg_pnl != 0 else float('inf')
+        cv = abs(std_dev / avg_pnl)
         consistency = max(0, min(100, 100 - (cv * 10)))
         
         return consistency
@@ -162,19 +169,31 @@ class PerformanceAnalytics:
         }
     
     def detect_market_condition(self, prices):
-        """Detect current market condition"""
+        """Detect current market condition with zero-price protection"""
         if len(prices) < 20:
             return "UNKNOWN"
         
         recent_prices = prices[-20:]
         
-        # Calculate volatility
-        returns = np.diff(recent_prices) / recent_prices[:-1]
+        # 🔧 FIX: Filter out zero prices before calculations
+        recent_prices = np.array([p for p in recent_prices if p > 0])
+        if len(recent_prices) < 10:  # Need at least 10 valid prices
+            return "UNKNOWN"
+        
+        # Calculate volatility with zero-division protection
+        denominator = recent_prices[:-1]
+        if np.any(denominator == 0):  # Double-check for zeros
+            return "UNKNOWN"
+        
+        returns = np.diff(recent_prices) / denominator
         volatility = np.std(returns) * 100
         
-        # Calculate trend
+        # Calculate trend with zero-division protection
         start_price = recent_prices[0]
         end_price = recent_prices[-1]
+        if start_price == 0:
+            return "UNKNOWN"
+        
         trend = (end_price - start_price) / start_price * 100
         
         # Classify market
@@ -841,30 +860,50 @@ class UltimateHybridBot:
         
         return None  # All retries failed
     
-    def get_klines(self, symbol, interval='5m', limit=200):
-        """Get candlestick data"""
-        try:
-            response = requests.get(
-                f"{self.base_url}/api/v3/klines",
-                params={
-                    'symbol': symbol,
-                    'interval': interval,
-                    'limit': limit
-                },
-                timeout=10
-            )
-            if response.status_code == 200:
-                klines = response.json()
-                closes = np.array([float(k[4]) for k in klines])
-                highs = np.array([float(k[2]) for k in klines])
-                lows = np.array([float(k[3]) for k in klines])
-                volumes = np.array([float(k[5]) for k in klines])
-                opens = np.array([float(k[1]) for k in klines])
-                return closes, highs, lows, volumes, opens
-            return None, None, None, None, None
-        except Exception as e:
-            logger.error(f"Error getting klines for {symbol}: {e}")
-            return None, None, None, None, None
+    def get_klines(self, symbol, interval='5m', limit=200, max_retries=3):
+        """Get candlestick data with retry logic and exponential backoff"""
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(
+                    f"{self.base_url}/api/v3/klines",
+                    params={
+                        'symbol': symbol,
+                        'interval': interval,
+                        'limit': limit
+                    },
+                    timeout=10
+                )
+                if response.status_code == 200:
+                    klines = response.json()
+                    closes = np.array([float(k[4]) for k in klines])
+                    highs = np.array([float(k[2]) for k in klines])
+                    lows = np.array([float(k[3]) for k in klines])
+                    volumes = np.array([float(k[5]) for k in klines])
+                    opens = np.array([float(k[1]) for k in klines])
+                    return closes, highs, lows, volumes, opens
+                elif response.status_code == 429:  # Rate limit
+                    wait_time = (2 ** attempt) * 2
+                    logger.warning(f"Rate limited (klines) for {symbol}, waiting {wait_time}s")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.warning(f"HTTP {response.status_code} for klines {symbol}")
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(f"Timeout (klines) for {symbol}, retry {attempt+1}/{max_retries} in {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Failed to get klines for {symbol} after {max_retries} attempts (timeout)")
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(f"Error (klines) for {symbol}: {e}, retry {attempt+1}/{max_retries} in {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Failed to get klines for {symbol} after {max_retries} attempts: {e}")
+        
+        return None, None, None, None, None  # All retries failed
     
     def calculate_indicators(self, closes, highs, lows, volumes):
         """Calculate all technical indicators with NaN/None validation"""
@@ -1821,10 +1860,14 @@ def get_positions():
         for key, pos in positions_copy.items():
             current_price = trading_bot.get_current_price(pos['symbol'])
             if current_price:
-                if pos['action'] == 'BUY':
-                    pnl_pct = (current_price - pos['entry_price']) / pos['entry_price'] * 100
+                # 🔧 FIX: Validate entry_price before division
+                if pos['entry_price'] > 0:
+                    if pos['action'] == 'BUY':
+                        pnl_pct = (current_price - pos['entry_price']) / pos['entry_price'] * 100
+                    else:
+                        pnl_pct = (pos['entry_price'] - current_price) / pos['entry_price'] * 100
                 else:
-                    pnl_pct = (pos['entry_price'] - current_price) / pos['entry_price'] * 100
+                    pnl_pct = 0.0  # Safe default if entry_price is invalid
                 
                 hold_time = (datetime.now() - pos['entry_time']).total_seconds() / 60
                 
@@ -1895,29 +1938,34 @@ def get_trade_history():
             with open(trading_bot.csv_file, 'r', newline='', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    trade_record = {
-                        'symbol': row.get('symbol', ''),
-                        'strategy': row.get('strategy', ''),
-                        'action': row.get('action', ''),
-                        'entry_time': row.get('timestamp', ''),
-                        'exit_time': row.get('timestamp', ''),
-                        'entry_price': float(row.get('entry_price', 0)),
-                        'exit_price': float(row.get('exit_price', 0)),
-                        'quantity': float(row.get('quantity', 0)),
-                        'entry_reason': row.get('entry_reason', 'N/A'),
-                        'exit_reason': row.get('exit_reason', 'N/A'),
-                        'market_condition_entry': row.get('entry_market_condition', 'Unknown'),
-                        'market_condition_exit': row.get('exit_market_condition', 'Unknown'),
-                        'hold_duration': float(row.get('hold_duration_hours', 0)) * 60,  # Convert to minutes
-                        'pnl': float(row.get('pnl', 0)),
-                        'pnl_pct': float(row.get('pnl_pct', 0)),
-                        'fee': float(row.get('fees', 0)),
-                        'stop_loss': float(row.get('stop_loss', 0)),
-                        'take_profit': float(row.get('take_profit', 0)),
-                        'confidence': float(row.get('confidence', 0)),
-                        'is_win': float(row.get('pnl', 0)) > 0
-                    }
-                    trade_history.append(trade_record)
+                    # 🔧 FIX: Safe float conversion with try-except for corrupted CSV
+                    try:
+                        trade_record = {
+                            'symbol': row.get('symbol', ''),
+                            'strategy': row.get('strategy', ''),
+                            'action': row.get('action', ''),
+                            'entry_time': row.get('timestamp', ''),
+                            'exit_time': row.get('timestamp', ''),
+                            'entry_price': float(row.get('entry_price', 0)) if row.get('entry_price') else 0.0,
+                            'exit_price': float(row.get('exit_price', 0)) if row.get('exit_price') else 0.0,
+                            'quantity': float(row.get('quantity', 0)) if row.get('quantity') else 0.0,
+                            'entry_reason': row.get('entry_reason', 'N/A'),
+                            'exit_reason': row.get('exit_reason', 'N/A'),
+                            'market_condition_entry': row.get('entry_market_condition', 'Unknown'),
+                            'market_condition_exit': row.get('exit_market_condition', 'Unknown'),
+                            'hold_duration': float(row.get('hold_duration_hours', 0)) * 60 if row.get('hold_duration_hours') else 0.0,
+                            'pnl': float(row.get('pnl', 0)) if row.get('pnl') else 0.0,
+                            'pnl_pct': float(row.get('pnl_pct', 0)) if row.get('pnl_pct') else 0.0,
+                            'fee': float(row.get('fees', 0)) if row.get('fees') else 0.0,
+                            'stop_loss': float(row.get('stop_loss', 0)) if row.get('stop_loss') else 0.0,
+                            'take_profit': float(row.get('take_profit', 0)) if row.get('take_profit') else 0.0,
+                            'confidence': float(row.get('confidence', 0)) if row.get('confidence') else 0.0,
+                            'is_win': float(row.get('pnl', 0)) > 0 if row.get('pnl') else False
+                        }
+                        trade_history.append(trade_record)
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Skipping corrupted CSV row: {e}")
+                        continue
         
         # Also add current session closed trades
         closed_trades = [t for t in trading_bot.trades if t.get('action') == 'CLOSE']
