@@ -1278,6 +1278,11 @@ class UltimateHybridBot:
             ind = data.get('indicators', {})
             
             # Factor 1: Current Progress to Target (25 points)
+            # 🔥 BUG FIX: Check for zero entry_price before division!
+            if entry_price <= 0:
+                logger.warning(f"⚠️ {symbol}: Invalid entry_price ({entry_price}), returning neutral confidence")
+                return 50, {}
+            
             current_gain = abs((current_price - entry_price) / entry_price * 100)
             target_gain = abs((target_price - entry_price) / entry_price * 100)
             progress = (current_gain / target_gain) if target_gain > 0 else 0
@@ -1400,6 +1405,12 @@ class UltimateHybridBot:
             # Calculate recent range (last 20 candles)
             recent_high = np.max(highs[-20:])
             recent_low = np.min(lows[-20:])
+            
+            # 🔥 BUG FIX: Check for zero/near-zero low price before division!
+            if recent_low <= 0:
+                logger.warning(f"⚠️ {symbol}: Invalid recent_low ({recent_low}), cannot detect breakout")
+                return None
+            
             range_size = (recent_high - recent_low) / recent_low * 100
             
             # Consolidation = tight range (<3%)
@@ -1779,13 +1790,16 @@ class UltimateHybridBot:
                     continue
             
             # Determine dominant regime
-            if total_coins == 0:
+            # 🔥 BUG FIX: Check if we have any valid data before using max()
+            if total_coins == 0 or not regime_counts:
+                logger.warning(f"⚠️ No coins analyzed for market regime, defaulting to NEUTRAL")
                 return 'NEUTRAL'
             
             dominant_regime = max(regime_counts, key=regime_counts.get)
             regime_pct = (regime_counts[dominant_regime] / total_coins) * 100
             
             logger.info(f"📊 Market Regime: {dominant_regime} ({regime_pct:.0f}% dominance)")
+            logger.info(f"   Analyzed {total_coins} coins: {dict(regime_counts)}")
             return dominant_regime
             
         except Exception as e:
@@ -1909,11 +1923,23 @@ class UltimateHybridBot:
             
             for level_type, price in levels:
                 if level_type == 'support':
-                    if not support or abs(price - support[-1]) / support[-1] > 0.01:
+                    # 🔥 BUG FIX: Check for zero/near-zero prices before division!
+                    if not support:
                         support.append(price)
+                    elif support[-1] > 0 and abs(price - support[-1]) / support[-1] > 0.01:
+                        support.append(price)
+                    elif support[-1] == 0:
+                        # Extremely rare but possible - skip this level
+                        logger.warning(f"⚠️ Zero price detected in support levels, skipping")
                 else:
-                    if not resistance or abs(price - resistance[-1]) / resistance[-1] > 0.01:
+                    # 🔥 BUG FIX: Check for zero/near-zero prices before division!
+                    if not resistance:
                         resistance.append(price)
+                    elif resistance[-1] > 0 and abs(price - resistance[-1]) / resistance[-1] > 0.01:
+                        resistance.append(price)
+                    elif resistance[-1] == 0:
+                        # Extremely rare but possible - skip this level
+                        logger.warning(f"⚠️ Zero price detected in resistance levels, skipping")
             
             return {
                 'support': sorted(support)[-3:],  # Last 3 support levels
@@ -2042,6 +2068,11 @@ class UltimateHybridBot:
     def calculate_opportunity_score(self, price, indicators, sr_levels):
         """Calculate opportunity score for a coin"""
         score = 50  # Base score
+        
+        # 🔥 BUG FIX: Check for invalid price before any calculations!
+        if price <= 0:
+            logger.warning(f"⚠️ Invalid price ({price}) in opportunity score calculation, returning base score")
+            return 50
         
         try:
             # Volatility bonus (higher volatility = more opportunities)
@@ -2298,6 +2329,11 @@ class UltimateHybridBot:
         sr = data['sr_levels']
         price = data['price']
         
+        # 🔥 BUG FIX: Check for invalid price before any calculations!
+        if price <= 0:
+            logger.warning(f"⚠️ {symbol}: Invalid price ({price}), skipping range signal")
+            return None
+        
         # 🎯 IMPROVEMENT: Volume filter
         if ind['volume_ratio'] < 1.1:
             return None
@@ -2383,6 +2419,11 @@ class UltimateHybridBot:
         ind = data['indicators']
         sr = data['sr_levels']
         price = data['price']
+        
+        # 🔥 BUG FIX: Check for invalid price before any calculations!
+        if price <= 0:
+            logger.warning(f"⚠️ {symbol}: Invalid price ({price}), skipping grid signal")
+            return None
         
         # Grid trading works best in ranging/sideways markets
         # Check for low trend strength (not too trendy)
