@@ -16,7 +16,7 @@ import csv
 from datetime import datetime, timedelta
 from threading import Thread, Lock  # 🔧 FIX: Added Lock for thread safety
 from flask import Flask, jsonify, render_template_string
-from collections import defaultdict
+from collections import defaultdict, deque  # 🎯 OPTIMIZATION: Added deque for efficient memory management
 
 # Create necessary directories
 os.makedirs('logs', exist_ok=True)
@@ -51,7 +51,7 @@ class PerformanceAnalytics:
         self.peak_capital = 10000
         self.current_drawdown = 0
         self.max_drawdown = 0
-        self.market_conditions = []
+        self.market_conditions = deque(maxlen=100)  # 🎯 OPTIMIZATION: Auto-cleanup with deque
         self.start_date = datetime.now()
         
     def update_daily_stats(self, date_str, trade_result, capital):
@@ -217,10 +217,7 @@ class PerformanceAnalytics:
             'volatility': volatility,
             'trend': trend
         })
-        
-        # Keep only last 100 entries
-        if len(self.market_conditions) > 100:
-            self.market_conditions = self.market_conditions[-100:]
+        # 🎯 OPTIMIZATION: No manual cleanup needed - deque handles it automatically!
         
         return condition
     
@@ -1563,6 +1560,10 @@ class UltimateHybridBot:
                 }
                 self.trades.append(trade)
                 
+                # 🎯 OPTIMIZATION: Prevent memory leak - cap trades list at 1000
+                if len(self.trades) > 1000:
+                    self.trades = self.trades[-1000:]
+                
                 logger.info(f"✅ OPENED {action} | {symbol} | {strategy_name} | {quantity:.4f} @ ${exec_price:.2f} | {reason}")
                 
                 return True
@@ -1656,6 +1657,10 @@ class UltimateHybridBot:
                     'position_key': position_key
                 }
                 self.trades.append(trade)
+                
+                # 🎯 OPTIMIZATION: Prevent memory leak - cap trades list at 1000
+                if len(self.trades) > 1000:
+                    self.trades = self.trades[-1000:]
                 
                 # Update analytics
                 date_str = datetime.now().strftime('%Y-%m-%d')
