@@ -68,8 +68,10 @@ def generate_strategy_candidates(templates, symbols, regimes):
                     
                     candidates.append(candidate)
                     candidate_id += 1
-            
-            return candidates
+    
+    # 🔥 BUG FIX: Return should be OUTSIDE all loops, not inside!
+    # Was returning after processing just 1 symbol & 1 regime!
+    return candidates
             
 def lightweight_simulation(df, strategy_type, params):
     """
