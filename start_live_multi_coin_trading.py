@@ -58,6 +58,17 @@ API_KEY = API_KEYS[0]['key']
 SECRET_KEY = API_KEYS[0]['secret']
 
 # ============================================================================
+# 🔴 LIVE / PAPER TRADING MODE 🔴
+# ============================================================================
+# 🚨 CRITICAL: Set this to True ONLY when going LIVE! 🚨
+LIVE_TRADING_MODE = False  # False = Paper Trading (Safe), True = LIVE TRADING (Real Money!)
+
+# Live Trading Safety Limits
+LIVE_MAX_POSITION_SIZE_USD = 100  # Max $100 per position in LIVE mode (safety!)
+LIVE_MAX_TOTAL_CAPITAL_RISK = 500  # Max $500 total capital at risk
+LIVE_DAILY_LOSS_LIMIT = 50  # Stop trading if lose $50 in a day (LIVE)
+
+# ============================================================================
 # PERFORMANCE ANALYTICS TRACKER
 # ============================================================================
 
@@ -557,6 +568,19 @@ class UltimateHybridBot:
         self.load_trade_history()
         
         logger.info(f"🔥 ULTIMATE HYBRID BOT INITIALIZED")
+        
+        # 🚨 LIVE/PAPER MODE INDICATOR
+        if LIVE_TRADING_MODE:
+            logger.warning(f"🔴🔴🔴 LIVE TRADING MODE ACTIVE! 🔴🔴🔴")
+            logger.warning(f"⚠️ REAL MONEY AT RISK! ⚠️")
+            logger.warning(f"💰 Max Position Size: ${LIVE_MAX_POSITION_SIZE_USD}")
+            logger.warning(f"💰 Max Total Risk: ${LIVE_MAX_TOTAL_CAPITAL_RISK}")
+            logger.warning(f"💰 Daily Loss Limit: ${LIVE_DAILY_LOSS_LIMIT}")
+            logger.warning(f"🔴🔴🔴 PROCEED WITH CAUTION! 🔴🔴🔴")
+        else:
+            logger.info(f"✅ PAPER TRADING MODE (Simulation - No Real Money)")
+            logger.info(f"💡 Set LIVE_TRADING_MODE = True to go LIVE")
+        
         logger.info(f"💰 Initial Capital: ${initial_capital:.2f}")
         logger.info(f"💰 Current Capital: ${self.current_capital:.2f}")
         logger.info(f"💰 Reserved Capital: ${self.reserved_capital:.2f}")
@@ -2552,12 +2576,21 @@ def get_stats():
             'total_equity': total_equity,
             'compounding_multiplier': compounding_multiplier,
             'compounding_pct': compounding_pct,
+            # 🔴 LIVE/PAPER MODE
+            'trading_mode': 'LIVE' if LIVE_TRADING_MODE else 'PAPER',
+            'is_live': LIVE_TRADING_MODE,
+            'live_limits': {
+                'max_position_size': LIVE_MAX_POSITION_SIZE_USD if LIVE_TRADING_MODE else None,
+                'max_total_risk': LIVE_MAX_TOTAL_CAPITAL_RISK if LIVE_TRADING_MODE else None,
+                'daily_loss_limit': LIVE_DAILY_LOSS_LIMIT if LIVE_TRADING_MODE else None
+            },
             'features': {
                 'grid_trading': True,
                 'dynamic_allocation': True,
                 'api_rotation': True,
                 'dynamic_hold_time': True,
-                'auto_compounding': True  # ✅ NEW!
+                'auto_compounding': True,
+                'live_ready': True  # ✅ LIVE READY!
             }
         }
         
@@ -3265,6 +3298,23 @@ def dashboard():
                     margin-bottom: 30px;
                 ">
                     <h1 style="font-size: 3em; margin-bottom: 15px;">🔥 BADSHAH TRADING BOT 🔥</h1>
+                    
+                    <!-- 🔴 LIVE/PAPER MODE INDICATOR -->
+                    <div id="trading-mode-indicator" style="
+                        padding: 15px 30px;
+                        margin: 15px auto;
+                        border-radius: 15px;
+                        font-size: 1.5em;
+                        font-weight: bold;
+                        max-width: 400px;
+                        background: rgba(34, 197, 94, 0.2);
+                        border: 3px solid #22c55e;
+                        color: #22c55e;
+                        animation: pulse 2s infinite;
+                    ">
+                        ✅ PAPER TRADING MODE
+                    </div>
+                    
                     <div class="subtitle" style="font-size: 1.2em; margin-bottom: 20px;">Multi-Strategy • Multi-Timeframe • Multi-Coin</div>
                     
                     <!-- 🆕 SYSTEM INFO -->
@@ -3651,6 +3701,22 @@ def dashboard():
                             } else {
                                 descEl.textContent = 'Position sizes auto-adjust with profits!';
                                 descEl.style.color = '#a3e635';
+                            }
+                        }
+                        
+                        // 🔴 UPDATE LIVE/PAPER MODE INDICATOR
+                        if (data.trading_mode) {
+                            const modeIndicator = document.getElementById('trading-mode-indicator');
+                            if (data.is_live) {
+                                modeIndicator.textContent = '🔴 LIVE TRADING MODE - REAL MONEY!';
+                                modeIndicator.style.background = 'rgba(239, 68, 68, 0.2)';
+                                modeIndicator.style.border = '3px solid #ef4444';
+                                modeIndicator.style.color = '#ef4444';
+                            } else {
+                                modeIndicator.textContent = '✅ PAPER TRADING MODE';
+                                modeIndicator.style.background = 'rgba(34, 197, 94, 0.2)';
+                                modeIndicator.style.border = '3px solid #22c55e';
+                                modeIndicator.style.color = '#22c55e';
                             }
                         }
                         
