@@ -2730,18 +2730,28 @@ class UltimateHybridBot:
                 self.print_status()
                 return  # Skip opening new positions
             
-            # 🎯 ROUND 7 FIX #6: Losing Streak Protection
+            # 🎯 ROUND 7 FIX #6: Losing Streak Protection (FIXED - NO BLOCKING!)
             CONSECUTIVE_LOSS_LIMIT = 3
             if self.consecutive_losses >= CONSECUTIVE_LOSS_LIMIT:
-                logger.warning(f"🚨 {self.consecutive_losses} CONSECUTIVE LOSSES - Taking 30min break to cool off!")
-                logger.warning(f"   This protects capital during bad market conditions.")
-                # Manage existing positions only
-                self.manage_positions()
-                self.print_status()
-                # Reset counter and take a break
-                self.consecutive_losses = 0
-                time.sleep(1800)  # 30 minute pause
-                return
+                # 🔧 CRITICAL FIX: Don't block with time.sleep()!
+                # Initialize pause if not already paused
+                if not hasattr(self, 'loss_pause_until'):
+                    self.loss_pause_until = datetime.now() + timedelta(minutes=30)
+                    logger.warning(f"🚨 {self.consecutive_losses} CONSECUTIVE LOSSES - PAUSED NEW TRADES!")
+                    logger.warning(f"   ⏸️ Pause until: {self.loss_pause_until.strftime('%I:%M %p')}")
+                    logger.warning(f"   📊 Still managing existing positions!")
+                
+                # Check if pause is over
+                if datetime.now() < self.loss_pause_until:
+                    # Still in pause period - manage positions but don't open new ones
+                    self.manage_positions()
+                    self.print_status()
+                    return  # Skip opening new positions
+                else:
+                    # Pause is over! Resume normal trading
+                    logger.info(f"✅ 30-minute pause completed! Resuming trading...")
+                    del self.loss_pause_until
+                    self.consecutive_losses = 0  # Reset counter
             
             # 🎯 ROUND 7 FIX #6: Daily Trade Limit (Quality over Quantity!)
             MAX_DAILY_TRADES = 20
