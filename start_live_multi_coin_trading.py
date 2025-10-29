@@ -913,38 +913,54 @@ class UltimateHybridBot:
                 
             indicators = {}
             
-            # 🔧 FIX: RSI with NaN protection
+            # 🔧 FIX: RSI with NaN protection AND length validation
             rsi_array = talib.RSI(closes, timeperiod=14)
-            indicators['rsi'] = float(rsi_array[-1]) if not np.isnan(rsi_array[-1]) else 50.0
+            if len(rsi_array) > 0:
+                indicators['rsi'] = float(rsi_array[-1]) if not np.isnan(rsi_array[-1]) else 50.0
+            else:
+                indicators['rsi'] = 50.0
             
-            # 🔧 FIX: EMAs with NaN protection
+            # 🔧 FIX: EMAs with NaN protection AND length validation
             ema_9 = talib.EMA(closes, timeperiod=9)
-            indicators['ema_9'] = float(ema_9[-1]) if not np.isnan(ema_9[-1]) else closes[-1]
+            indicators['ema_9'] = float(ema_9[-1]) if len(ema_9) > 0 and not np.isnan(ema_9[-1]) else closes[-1]
             
             ema_21 = talib.EMA(closes, timeperiod=21)
-            indicators['ema_21'] = float(ema_21[-1]) if not np.isnan(ema_21[-1]) else closes[-1]
+            indicators['ema_21'] = float(ema_21[-1]) if len(ema_21) > 0 and not np.isnan(ema_21[-1]) else closes[-1]
             
             ema_50 = talib.EMA(closes, timeperiod=50)
-            indicators['ema_50'] = float(ema_50[-1]) if not np.isnan(ema_50[-1]) else closes[-1]
+            indicators['ema_50'] = float(ema_50[-1]) if len(ema_50) > 0 and not np.isnan(ema_50[-1]) else closes[-1]
             
             ema_200 = talib.EMA(closes, timeperiod=200)
-            indicators['ema_200'] = float(ema_200[-1]) if not np.isnan(ema_200[-1]) else closes[-1]
+            indicators['ema_200'] = float(ema_200[-1]) if len(ema_200) > 0 and not np.isnan(ema_200[-1]) else closes[-1]
             
-            # 🔧 FIX: MACDs with NaN protection
+            # 🔧 FIX: MACDs with NaN protection AND length validation
             macd, signal, hist = talib.MACD(closes)
-            indicators['macd'] = float(macd[-1]) if not np.isnan(macd[-1]) else 0.0
-            indicators['macd_signal'] = float(signal[-1]) if not np.isnan(signal[-1]) else 0.0
-            indicators['macd_hist'] = float(hist[-1]) if not np.isnan(hist[-1]) else 0.0
+            if len(macd) > 0 and len(signal) > 0 and len(hist) > 0:
+                indicators['macd'] = float(macd[-1]) if not np.isnan(macd[-1]) else 0.0
+                indicators['macd_signal'] = float(signal[-1]) if not np.isnan(signal[-1]) else 0.0
+                indicators['macd_hist'] = float(hist[-1]) if not np.isnan(hist[-1]) else 0.0
+            else:
+                indicators['macd'] = 0.0
+                indicators['macd_signal'] = 0.0
+                indicators['macd_hist'] = 0.0
             
-            # 🔧 FIX: Bollinger Bands with NaN protection
+            # 🔧 FIX: Bollinger Bands with NaN protection AND length validation
             upper, middle, lower = talib.BBANDS(closes)
-            indicators['bb_upper'] = float(upper[-1]) if not np.isnan(upper[-1]) else closes[-1] * 1.02
-            indicators['bb_middle'] = float(middle[-1]) if not np.isnan(middle[-1]) else closes[-1]
-            indicators['bb_lower'] = float(lower[-1]) if not np.isnan(lower[-1]) else closes[-1] * 0.98
+            if len(upper) > 0 and len(middle) > 0 and len(lower) > 0:
+                indicators['bb_upper'] = float(upper[-1]) if not np.isnan(upper[-1]) else closes[-1] * 1.02
+                indicators['bb_middle'] = float(middle[-1]) if not np.isnan(middle[-1]) else closes[-1]
+                indicators['bb_lower'] = float(lower[-1]) if not np.isnan(lower[-1]) else closes[-1] * 0.98
+            else:
+                indicators['bb_upper'] = closes[-1] * 1.02
+                indicators['bb_middle'] = closes[-1]
+                indicators['bb_lower'] = closes[-1] * 0.98
             
-            # 🔧 FIX: ATR with NaN protection
+            # 🔧 FIX: ATR with NaN protection AND length validation
             atr = talib.ATR(highs, lows, closes, timeperiod=14)
-            atr_value = float(atr[-1]) if not np.isnan(atr[-1]) else closes[-1] * 0.02
+            if len(atr) > 0:
+                atr_value = float(atr[-1]) if not np.isnan(atr[-1]) else closes[-1] * 0.02
+            else:
+                atr_value = closes[-1] * 0.02
             indicators['atr'] = atr_value
             indicators['atr_pct'] = (atr_value / closes[-1]) * 100 if closes[-1] > 0 else 2.0
             
@@ -1467,7 +1483,14 @@ class UltimateHybridBot:
                 market_condition_exit = self.detect_market_condition(symbol)
                 
                 # Calculate hold duration
-                hold_duration = (datetime.now() - position['entry_time']).total_seconds() / 60  # minutes
+                # 🔧 FIX: Validate entry_time before datetime subtraction
+                try:
+                    if isinstance(position['entry_time'], datetime):
+                        hold_duration = (datetime.now() - position['entry_time']).total_seconds() / 60  # minutes
+                    else:
+                        hold_duration = 0.0  # Safe default if entry_time is invalid
+                except (TypeError, AttributeError):
+                    hold_duration = 0.0
                 
                 # Log close with full details
                 trade = {
@@ -1520,7 +1543,8 @@ class UltimateHybridBot:
                 }
                 self.save_trade_to_csv(csv_trade)
                 
-                hold_time = (datetime.now() - position['entry_time']).total_seconds() / 60
+                # 🔧 FIX: Use already calculated hold_duration (validated above)
+                hold_time = hold_duration
                 
                 emoji = "🎉" if pnl > 0 else "❌"
                 logger.info(f"{emoji} CLOSED | {symbol} | {strategy_name} | PnL: ${pnl:.2f} ({pnl_pct:+.2f}%) | Hold: {hold_time:.0f}min | {reason}")
@@ -1630,9 +1654,14 @@ class UltimateHybridBot:
                         continue
                 
                 # Check time-based exit
-                hold_time = (datetime.now() - position['entry_time']).total_seconds() / 60
-                if hold_time > strategy['hold_time'] * 1.5:  # 1.5x max hold time
-                    positions_to_close.append((position_key, current_price, 'Time Limit'))
+                # 🔧 FIX: Validate entry_time before datetime subtraction
+                try:
+                    if isinstance(position.get('entry_time'), datetime):
+                        hold_time = (datetime.now() - position['entry_time']).total_seconds() / 60
+                        if hold_time > strategy['hold_time'] * 1.5:  # 1.5x max hold time
+                            positions_to_close.append((position_key, current_price, 'Time Limit'))
+                except (TypeError, AttributeError):
+                    pass  # Skip time check if entry_time is invalid
                 
             except Exception as e:
                 logger.error(f"Error managing position {position_key}: {e}")
@@ -1738,15 +1767,31 @@ class UltimateHybridBot:
         
         if self.positions:
             logger.info(f"\n🎯 OPEN POSITIONS:")
-            for key, pos in self.positions.items():
+            # 🔧 FIX: Thread-safe snapshot to avoid race condition
+            with self.data_lock:
+                positions_snapshot = dict(self.positions)
+            
+            for key, pos in positions_snapshot.items():
                 current_price = self.get_current_price(pos['symbol'])
                 if current_price:
-                    if pos['action'] == 'BUY':
-                        pnl_pct = (current_price - pos['entry_price']) / pos['entry_price'] * 100
+                    # 🔧 FIX: Validate entry_price before division
+                    if pos['entry_price'] > 0:
+                        if pos['action'] == 'BUY':
+                            pnl_pct = (current_price - pos['entry_price']) / pos['entry_price'] * 100
+                        else:
+                            pnl_pct = (pos['entry_price'] - current_price) / pos['entry_price'] * 100
                     else:
-                        pnl_pct = (pos['entry_price'] - current_price) / pos['entry_price'] * 100
+                        pnl_pct = 0.0
                     
-                    hold_time = (datetime.now() - pos['entry_time']).total_seconds() / 60
+                    # 🔧 FIX: Validate entry_time before datetime subtraction
+                    try:
+                        if isinstance(pos.get('entry_time'), datetime):
+                            hold_time = (datetime.now() - pos['entry_time']).total_seconds() / 60
+                        else:
+                            hold_time = 0.0
+                    except (TypeError, AttributeError):
+                        hold_time = 0.0
+                    
                     logger.info(f"  {pos['symbol']} | {pos['strategy']} | {pos['action']} | PnL: {pnl_pct:+.2f}% | Hold: {hold_time:.0f}min")
         
         if self.strategy_stats:
@@ -1869,7 +1914,14 @@ def get_positions():
                 else:
                     pnl_pct = 0.0  # Safe default if entry_price is invalid
                 
-                hold_time = (datetime.now() - pos['entry_time']).total_seconds() / 60
+                # 🔧 FIX: Validate entry_time before datetime subtraction
+                try:
+                    if isinstance(pos.get('entry_time'), datetime):
+                        hold_time = (datetime.now() - pos['entry_time']).total_seconds() / 60
+                    else:
+                        hold_time = 0.0
+                except (TypeError, AttributeError):
+                    hold_time = 0.0
                 
                 positions_data.append({
                     'symbol': pos['symbol'],
@@ -1968,10 +2020,14 @@ def get_trade_history():
                         continue
         
         # Also add current session closed trades
-        closed_trades = [t for t in trading_bot.trades if t.get('action') == 'CLOSE']
+        # 🔧 FIX: Thread-safe access to trades list
+        with trading_bot.data_lock:
+            trades_snapshot = list(trading_bot.trades)
+        
+        closed_trades = [t for t in trades_snapshot if t.get('action') == 'CLOSE']
         for close_trade in closed_trades:
             position_key = close_trade.get('position_key', '')
-            entry_trade = next((t for t in trading_bot.trades 
+            entry_trade = next((t for t in trades_snapshot 
                               if t.get('position_key') == position_key and t.get('action') != 'CLOSE'), None)
             
             trade_record = {
