@@ -285,52 +285,58 @@ STRATEGIES = {
     'SCALPING': {
         'timeframe': '1m',
         'hold_time': 60,  # 1-60 minutes
-        'capital_pct': 0.15,  # 15% of capital
-        'stop_loss': 0.008,  # 0.8%
-        'take_profit': 0.012,  # 1.2%
+        'capital_pct': 0.10,  # 10% ✅ REDUCED (was 15%)
+        'stop_loss': 0.005,  # 0.5% ✅ TIGHT (was 0.8%)
+        'take_profit': 0.020,  # 2.0% ✅ 1:4 R/R (was 1.2%)
         'max_positions': 2
     },
     'DAY_TRADING': {
         'timeframe': '5m',
         'hold_time': 480,  # 1-8 hours
-        'capital_pct': 0.20,  # 20% of capital
-        'stop_loss': 0.015,  # 1.5%
-        'take_profit': 0.025,  # 2.5%
+        'capital_pct': 0.12,  # 12% ✅ REDUCED (was 20%)
+        'stop_loss': 0.008,  # 0.8% ✅ TIGHT (was 1.5%)
+        'take_profit': 0.032,  # 3.2% ✅ 1:4 R/R (was 2.5%)
         'max_positions': 2
     },
     'SWING_TRADING': {
         'timeframe': '1h',
         'hold_time': 4320,  # 3-7 days
-        'capital_pct': 0.25,  # 25% of capital
-        'stop_loss': 0.025,  # 2.5%
-        'take_profit': 0.06,  # 6%
+        'capital_pct': 0.15,  # 15% ✅ REDUCED (was 25%)
+        'stop_loss': 0.012,  # 1.2% ✅ TIGHT (was 2.5%)
+        'take_profit': 0.048,  # 4.8% ✅ 1:4 R/R (was 6%)
         'max_positions': 2
     },
     'RANGE_TRADING': {
         'timeframe': '15m',
         'hold_time': 240,  # 4 hours
-        'capital_pct': 0.15,  # 15% of capital
-        'stop_loss': 0.012,  # 1.2%
-        'take_profit': 0.02,  # 2%
+        'capital_pct': 0.10,  # 10% ✅ REDUCED (was 15%)
+        'stop_loss': 0.006,  # 0.6% ✅ TIGHT (was 1.2%)
+        'take_profit': 0.024,  # 2.4% ✅ 1:4 R/R (was 2%)
         'max_positions': 2
     },
     'MOMENTUM': {
         'timeframe': '5m',
         'hold_time': 360,  # 6 hours
-        'capital_pct': 0.15,  # 15% of capital
-        'stop_loss': 0.02,  # 2%
-        'take_profit': 0.04,  # 4%
+        'capital_pct': 0.12,  # 12% ✅ REDUCED (was 15%)
+        'stop_loss': 0.010,  # 1.0% ✅ TIGHT (was 2%)
+        'take_profit': 0.040,  # 4.0% ✅ 1:4 R/R (same)
         'max_positions': 1
     },
     'POSITION_TRADING': {
         'timeframe': '4h',
         'hold_time': 20160,  # 2-4 weeks
-        'capital_pct': 0.10,  # 10% of capital
-        'stop_loss': 0.04,  # 4%
-        'take_profit': 0.12,  # 12%
+        'capital_pct': 0.08,  # 8% ✅ REDUCED (was 10%)
+        'stop_loss': 0.020,  # 2.0% ✅ TIGHT (was 4%)
+        'take_profit': 0.080,  # 8.0% ✅ 1:4 R/R (was 12%)
         'max_positions': 1
     }
 }
+
+# 🎯 RISK/REWARD OPTIMIZATION:
+# ✅ ALL strategies now have 1:4 Risk/Reward ratio!
+# ✅ Stop-losses TIGHTENED by ~50% (cut losses fast!)
+# ✅ Take-profits OPTIMIZED for 1:4 ratio (let winners run!)
+# ✅ This ensures: Small losses + BIG wins = PROFIT! 💰
 
 # Coin universe to scan
 COIN_UNIVERSE = [
@@ -1418,8 +1424,9 @@ class UltimateHybridBot:
                 else:
                     current_gain_pct = ((position['entry_price'] - current_price) / position['entry_price']) * 100
                 
-                # If profit > 0.3% (covers fees), check confidence
-                if current_gain_pct >= 0.3:
+                # ⚡ NEW LOGIC: Only exit early if SIGNIFICANT profit AND low confidence
+                # Don't exit at tiny 0.3% profits - let winners run!
+                if current_gain_pct >= 1.5:  # ✅ At least 1.5% profit (was 0.3%)
                     confidence, details = self.calculate_target_confidence(
                         symbol, 
                         current_price, 
@@ -1432,15 +1439,16 @@ class UltimateHybridBot:
                     position['target_confidence'] = confidence
                     position['confidence_details'] = details
                     
-                    # DECISION: If confidence < 80%, LOCK PROFIT NOW!
-                    if confidence < 80:
+                    # DECISION: Only exit if confidence VERY low (<60%) AND profit good
+                    # This prevents early exits and lets winners run to target!
+                    if confidence < 60 and current_gain_pct >= 2.0:  # ✅ Stricter rules!
                         reason = f"Smart Lock ({confidence}% confidence, +{current_gain_pct:.2f}%)"
-                        logger.info(f"🔒 LOCKING PROFIT: {symbol} | Confidence: {confidence}% < 80% | Gain: +{current_gain_pct:.2f}%")
+                        logger.info(f"🔒 LOCKING PROFIT: {symbol} | Confidence: {confidence}% < 60% | Gain: +{current_gain_pct:.2f}%")
                         positions_to_close.append((position_key, current_price, reason))
                         continue
                     else:
-                        # Confidence high, wait for target!
-                        logger.debug(f"⏳ WAITING: {symbol} | Confidence: {confidence}% >= 80% | Target likely!")
+                        # Confidence decent or not enough profit yet - LET IT RUN!
+                        logger.debug(f"⏳ LETTING IT RUN: {symbol} | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}%")
                 
                 # ==================================================================
                 # TRADITIONAL EXITS (Priority #2)
