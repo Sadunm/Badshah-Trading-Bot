@@ -14,7 +14,7 @@ import numpy as np
 import talib
 import csv
 from datetime import datetime, timedelta
-from threading import Thread
+from threading import Thread, Lock  # 🔧 FIX: Added Lock for thread safety
 from flask import Flask, jsonify, render_template_string
 from collections import defaultdict
 
@@ -389,6 +389,9 @@ class UltimateHybridBot:
         self.api_key = api_key
         self.secret_key = secret_key
         self.base_url = 'https://testnet.binance.vision'
+        
+        # 🔧 FIX: Thread safety lock for data access
+        self.data_lock = Lock()
         
         # Capital management
         self.initial_capital = initial_capital
@@ -803,20 +806,40 @@ class UltimateHybridBot:
             logger.error(f"Error detecting market condition for {symbol}: {e}")
             return "UNKNOWN"
     
-    def get_current_price(self, symbol):
-        """Get current price for a symbol"""
-        try:
-            response = requests.get(
-                f"{self.base_url}/api/v3/ticker/price",
-                params={'symbol': symbol},
-                timeout=10
-            )
-            if response.status_code == 200:
-                return float(response.json()['price'])
-            return None
-        except Exception as e:
-            logger.error(f"Error getting price for {symbol}: {e}")
-            return None
+    def get_current_price(self, symbol, max_retries=3):
+        """Get current price with retry logic and exponential backoff"""
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(
+                    f"{self.base_url}/api/v3/ticker/price",
+                    params={'symbol': symbol},
+                    timeout=5  # Shorter timeout for faster retries
+                )
+                if response.status_code == 200:
+                    return float(response.json()['price'])
+                elif response.status_code == 429:  # Rate limit
+                    wait_time = (2 ** attempt) * 2  # Longer wait for rate limits
+                    logger.warning(f"Rate limited for {symbol}, waiting {wait_time}s")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.warning(f"HTTP {response.status_code} for {symbol}")
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    logger.warning(f"Timeout for {symbol}, retry {attempt+1}/{max_retries} in {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Failed to get price for {symbol} after {max_retries} attempts (timeout)")
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(f"Error for {symbol}: {e}, retry {attempt+1}/{max_retries} in {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Failed to get price for {symbol} after {max_retries} attempts: {e}")
+        
+        return None  # All retries failed
     
     def get_klines(self, symbol, interval='5m', limit=200):
         """Get candlestick data"""
@@ -844,52 +867,75 @@ class UltimateHybridBot:
             return None, None, None, None, None
     
     def calculate_indicators(self, closes, highs, lows, volumes):
-        """Calculate all technical indicators"""
+        """Calculate all technical indicators with NaN/None validation"""
         try:
             if len(closes) < 200:
                 return None
                 
             indicators = {}
             
-            # RSI
-            indicators['rsi'] = talib.RSI(closes, timeperiod=14)[-1]
+            # 🔧 FIX: RSI with NaN protection
+            rsi_array = talib.RSI(closes, timeperiod=14)
+            indicators['rsi'] = float(rsi_array[-1]) if not np.isnan(rsi_array[-1]) else 50.0
             
-            # EMAs
-            indicators['ema_9'] = talib.EMA(closes, timeperiod=9)[-1]
-            indicators['ema_21'] = talib.EMA(closes, timeperiod=21)[-1]
-            indicators['ema_50'] = talib.EMA(closes, timeperiod=50)[-1]
-            indicators['ema_200'] = talib.EMA(closes, timeperiod=200)[-1]
+            # 🔧 FIX: EMAs with NaN protection
+            ema_9 = talib.EMA(closes, timeperiod=9)
+            indicators['ema_9'] = float(ema_9[-1]) if not np.isnan(ema_9[-1]) else closes[-1]
             
-            # MACDs
+            ema_21 = talib.EMA(closes, timeperiod=21)
+            indicators['ema_21'] = float(ema_21[-1]) if not np.isnan(ema_21[-1]) else closes[-1]
+            
+            ema_50 = talib.EMA(closes, timeperiod=50)
+            indicators['ema_50'] = float(ema_50[-1]) if not np.isnan(ema_50[-1]) else closes[-1]
+            
+            ema_200 = talib.EMA(closes, timeperiod=200)
+            indicators['ema_200'] = float(ema_200[-1]) if not np.isnan(ema_200[-1]) else closes[-1]
+            
+            # 🔧 FIX: MACDs with NaN protection
             macd, signal, hist = talib.MACD(closes)
-            indicators['macd'] = macd[-1]
-            indicators['macd_signal'] = signal[-1]
-            indicators['macd_hist'] = hist[-1]
+            indicators['macd'] = float(macd[-1]) if not np.isnan(macd[-1]) else 0.0
+            indicators['macd_signal'] = float(signal[-1]) if not np.isnan(signal[-1]) else 0.0
+            indicators['macd_hist'] = float(hist[-1]) if not np.isnan(hist[-1]) else 0.0
             
-            # Bollinger Bands
+            # 🔧 FIX: Bollinger Bands with NaN protection
             upper, middle, lower = talib.BBANDS(closes)
-            indicators['bb_upper'] = upper[-1]
-            indicators['bb_middle'] = middle[-1]
-            indicators['bb_lower'] = lower[-1]
+            indicators['bb_upper'] = float(upper[-1]) if not np.isnan(upper[-1]) else closes[-1] * 1.02
+            indicators['bb_middle'] = float(middle[-1]) if not np.isnan(middle[-1]) else closes[-1]
+            indicators['bb_lower'] = float(lower[-1]) if not np.isnan(lower[-1]) else closes[-1] * 0.98
             
-            # ATR (volatility)
+            # 🔧 FIX: ATR with NaN protection
             atr = talib.ATR(highs, lows, closes, timeperiod=14)
-            indicators['atr'] = atr[-1]
-            indicators['atr_pct'] = (atr[-1] / closes[-1]) * 100
+            atr_value = float(atr[-1]) if not np.isnan(atr[-1]) else closes[-1] * 0.02
+            indicators['atr'] = atr_value
+            indicators['atr_pct'] = (atr_value / closes[-1]) * 100 if closes[-1] > 0 else 2.0
             
-            # Volume
-            indicators['volume_avg'] = np.mean(volumes[-20:])
+            # 🔧 FIX: Volume with zero-division protection
+            volume_avg = np.mean(volumes[-20:])
+            indicators['volume_avg'] = volume_avg
             indicators['volume_current'] = volumes[-1]
-            indicators['volume_ratio'] = volumes[-1] / np.mean(volumes[-20:])
+            indicators['volume_ratio'] = (volumes[-1] / volume_avg) if volume_avg > 0 else 1.0
             
-            # Momentum
-            indicators['momentum_3'] = (closes[-1] - closes[-3]) / closes[-3] * 100
-            indicators['momentum_10'] = (closes[-1] - closes[-10]) / closes[-10] * 100
+            # 🔧 FIX: Momentum with zero-division protection
+            if closes[-3] > 0:
+                indicators['momentum_3'] = (closes[-1] - closes[-3]) / closes[-3] * 100
+            else:
+                indicators['momentum_3'] = 0.0
+                
+            if closes[-10] > 0:
+                indicators['momentum_10'] = (closes[-1] - closes[-10]) / closes[-10] * 100
+            else:
+                indicators['momentum_10'] = 0.0
+            
+            # 🔧 VALIDATION: Check all indicators are valid numbers
+            for key, value in indicators.items():
+                if value is None or np.isnan(value) or np.isinf(value):
+                    logger.warning(f"Invalid indicator {key}={value}, using default")
+                    indicators[key] = 0.0 if 'momentum' in key or 'macd' in key else 50.0
             
             return indicators
             
         except Exception as e:
-            logger.error(f"Error calculating indicators: {e}")
+            logger.error(f"Error calculating indicators: {e}", exc_info=True)
             return None
     
     def detect_support_resistance(self, highs, lows, closes, window=20):
@@ -1039,15 +1085,20 @@ class UltimateHybridBot:
             support = sr_levels.get('support', [])
             resistance = sr_levels.get('resistance', [])
             
-            if support:
-                dist_to_support = min([abs(price - s) / price for s in support])
-                if dist_to_support < 0.01:  # Within 1% of support
-                    score += 10
+            # 🔧 FIX: Check list not empty before min()
+            if support and len(support) > 0:
+                distances = [abs(price - s) / price for s in support]
+                if distances:
+                    dist_to_support = min(distances)
+                    if dist_to_support < 0.01:  # Within 1% of support
+                        score += 10
             
-            if resistance:
-                dist_to_resistance = min([abs(price - r) / price for r in resistance])
-                if dist_to_resistance < 0.01:  # Within 1% of resistance
-                    score += 10
+            if resistance and len(resistance) > 0:
+                distances = [abs(price - r) / price for r in resistance]
+                if distances:
+                    dist_to_resistance = min(distances)
+                    if dist_to_resistance < 0.01:  # Within 1% of resistance
+                        score += 10
             
             return min(score, 100)  # Cap at 100
             
@@ -1109,8 +1160,10 @@ class UltimateHybridBot:
             return {'action': 'BUY', 'reason': 'Swing Buy Uptrend Dip', 'confidence': 0.85}
         
         # Near support in uptrend
-        if uptrend and sr['support']:
-            if min([abs(price - s) / price for s in sr['support']]) < 0.015:
+        # 🔧 FIX: Check list not empty before min()
+        if uptrend and sr['support'] and len(sr['support']) > 0:
+            distances = [abs(price - s) / price for s in sr['support']]
+            if distances and min(distances) < 0.015:
                 return {'action': 'BUY', 'reason': 'Swing Buy Support', 'confidence': 0.8}
         
         # Sell rallies in downtrend
@@ -1126,20 +1179,31 @@ class UltimateHybridBot:
         price = data['price']
         
         # Ranging market (low trend strength)
-        if abs(ind['ema_9'] - ind['ema_21']) / ind['ema_21'] > 0.02:
-            return None  # Too trendy
+        # 🔧 FIX: Zero-division protection
+        if ind['ema_21'] > 0:
+            trend_strength = abs(ind['ema_9'] - ind['ema_21']) / ind['ema_21']
+            if trend_strength > 0.02:
+                return None  # Too trendy
+        else:
+            return None  # Invalid EMA
         
         # Near support
-        if sr['support']:
-            dist_to_support = min([abs(price - s) / price for s in sr['support']])
-            if dist_to_support < 0.01 and ind['rsi'] < 45:
-                return {'action': 'BUY', 'reason': 'Range Bottom', 'confidence': 0.75}
+        # 🔧 FIX: Check list not empty before min()
+        if sr['support'] and len(sr['support']) > 0:
+            distances = [abs(price - s) / price for s in sr['support']]
+            if distances:
+                dist_to_support = min(distances)
+                if dist_to_support < 0.01 and ind['rsi'] < 45:
+                    return {'action': 'BUY', 'reason': 'Range Bottom', 'confidence': 0.75}
         
         # Near resistance
-        if sr['resistance']:
-            dist_to_resistance = min([abs(price - r) / price for r in sr['resistance']])
-            if dist_to_resistance < 0.01 and ind['rsi'] > 55:
-                return {'action': 'SELL', 'reason': 'Range Top', 'confidence': 0.75}
+        # 🔧 FIX: Check list not empty before min()
+        if sr['resistance'] and len(sr['resistance']) > 0:
+            distances = [abs(price - r) / price for r in sr['resistance']]
+            if distances:
+                dist_to_resistance = min(distances)
+                if dist_to_resistance < 0.01 and ind['rsi'] > 55:
+                    return {'action': 'SELL', 'reason': 'Range Top', 'confidence': 0.75}
         
         return None
     
@@ -1221,77 +1285,91 @@ class UltimateHybridBot:
             return 0
     
     def open_position(self, symbol, strategy_name, action, price, reason, confidence):
-        """Open a new position"""
-        try:
-            # Check if already have position
-            position_key = f"{symbol}_{strategy_name}"
-            if position_key in self.positions:
+        """Open a new position with comprehensive safety checks"""
+        # 🔧 FIX: Thread-safe position opening
+        with self.data_lock:
+            try:
+                # 🔧 FIX: Check MAX_TOTAL_POSITIONS (most critical!)
+                MAX_TOTAL_POSITIONS = 5  # Never more than 5 positions total!
+                if len(self.positions) >= MAX_TOTAL_POSITIONS:
+                    logger.warning(f"⚠️ Max total positions ({MAX_TOTAL_POSITIONS}) reached, skipping {symbol}")
+                    return False
+                
+                # 🔧 FIX: Check if symbol already has ANY position (avoid double exposure)
+                symbol_positions = [p for p in self.positions.values() if p['symbol'] == symbol]
+                if symbol_positions:
+                    logger.warning(f"⚠️ Already have position in {symbol}, skipping to avoid double exposure")
+                    return False
+                
+                # Check if already have position with this strategy
+                position_key = f"{symbol}_{strategy_name}"
+                if position_key in self.positions:
+                    return False
+                
+                # Check max positions for strategy
+                strategy_positions = [p for p in self.positions.values() if p['strategy'] == strategy_name]
+                if len(strategy_positions) >= STRATEGIES[strategy_name]['max_positions']:
+                    return False
+                
+                # Calculate position size
+                quantity = self.calculate_position_size(symbol, strategy_name, price)
+                if quantity <= 0:
+                    return False
+                
+                # Execute order
+                strategy = STRATEGIES[strategy_name]
+                exec_price = price * (1 + self.slippage_rate) if action == 'BUY' else price * (1 - self.slippage_rate)
+                position_value = quantity * exec_price
+                fee = position_value * self.fee_rate
+                total_cost = position_value + fee
+                
+                # Deduct from capital
+                self.current_capital -= total_cost
+                self.reserved_capital += position_value
+                
+                # Detect market condition at entry
+                market_condition = self.detect_market_condition(symbol)
+                
+                # Create position
+                self.positions[position_key] = {
+                    'symbol': symbol,
+                    'strategy': strategy_name,
+                    'action': action,
+                    'quantity': quantity,
+                    'entry_price': exec_price,
+                    'entry_time': datetime.now(),
+                    'stop_loss': exec_price * (1 - strategy['stop_loss']) if action == 'BUY' else exec_price * (1 + strategy['stop_loss']),
+                    'take_profit': exec_price * (1 + strategy['take_profit']) if action == 'BUY' else exec_price * (1 - strategy['take_profit']),
+                    'reason': reason,
+                    'confidence': confidence,
+                    'market_condition': market_condition,
+                    'target_confidence': None,  # Will be calculated when in profit
+                    'position_value': position_value  # 🔧 FIX: Store original position value for accurate capital tracking
+                }
+                
+                # Log trade with market condition
+                trade = {
+                    'timestamp': datetime.now(),
+                    'symbol': symbol,
+                    'strategy': strategy_name,
+                    'action': action,
+                    'quantity': quantity,
+                    'price': exec_price,
+                    'fee': fee,
+                    'reason': reason,
+                    'confidence': confidence,
+                    'market_condition': market_condition,
+                    'position_key': position_key  # Link to position for history
+                }
+                self.trades.append(trade)
+                
+                logger.info(f"✅ OPENED {action} | {symbol} | {strategy_name} | {quantity:.4f} @ ${exec_price:.2f} | {reason}")
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error opening position: {e}")
                 return False
-            
-            # Check max positions for strategy
-            strategy_positions = [p for p in self.positions.values() if p['strategy'] == strategy_name]
-            if len(strategy_positions) >= STRATEGIES[strategy_name]['max_positions']:
-                return False
-            
-            # Calculate position size
-            quantity = self.calculate_position_size(symbol, strategy_name, price)
-            if quantity <= 0:
-                return False
-            
-            # Execute order
-            strategy = STRATEGIES[strategy_name]
-            exec_price = price * (1 + self.slippage_rate) if action == 'BUY' else price * (1 - self.slippage_rate)
-            position_value = quantity * exec_price
-            fee = position_value * self.fee_rate
-            total_cost = position_value + fee
-            
-            # Deduct from capital
-            self.current_capital -= total_cost
-            self.reserved_capital += position_value
-            
-            # Detect market condition at entry
-            market_condition = self.detect_market_condition(symbol)
-            
-            # Create position
-            self.positions[position_key] = {
-                'symbol': symbol,
-                'strategy': strategy_name,
-                'action': action,
-                'quantity': quantity,
-                'entry_price': exec_price,
-                'entry_time': datetime.now(),
-                'stop_loss': exec_price * (1 - strategy['stop_loss']) if action == 'BUY' else exec_price * (1 + strategy['stop_loss']),
-                'take_profit': exec_price * (1 + strategy['take_profit']) if action == 'BUY' else exec_price * (1 - strategy['take_profit']),
-                'reason': reason,
-                'confidence': confidence,
-                'market_condition': market_condition,
-                'target_confidence': None,  # Will be calculated when in profit
-                'position_value': position_value  # 🔧 FIX: Store original position value for accurate capital tracking
-            }
-            
-            # Log trade with market condition
-            trade = {
-                'timestamp': datetime.now(),
-                'symbol': symbol,
-                'strategy': strategy_name,
-                'action': action,
-                'quantity': quantity,
-                'price': exec_price,
-                'fee': fee,
-                'reason': reason,
-                'confidence': confidence,
-                'market_condition': market_condition,
-                'position_key': position_key  # Link to position for history
-            }
-            self.trades.append(trade)
-            
-            logger.info(f"✅ OPENED {action} | {symbol} | {strategy_name} | {quantity:.4f} @ ${exec_price:.2f} | {reason}")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error opening position: {e}")
-            return False
     
     def close_position(self, position_key, current_price, reason):
         """Close an existing position"""
@@ -1694,13 +1772,19 @@ def get_stats():
 
 @app.route('/api/positions')
 def get_positions():
-    """Get detailed position information"""
+    """Get detailed position information with thread safety"""
     global trading_bot
     
     positions_data = []
     
     if trading_bot:
-        for key, pos in trading_bot.positions.items():
+        # 🔧 FIX: Thread-safe access to positions data
+        with trading_bot.data_lock:
+            # Create a copy of positions to avoid modification during iteration
+            positions_copy = dict(trading_bot.positions)
+        
+        # Now process outside the lock (so we don't hold lock during API calls)
+        for key, pos in positions_copy.items():
             current_price = trading_bot.get_current_price(pos['symbol'])
             if current_price:
                 if pos['action'] == 'BUY':
