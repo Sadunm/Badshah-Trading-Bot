@@ -1798,13 +1798,28 @@ class UltimateHybridBot:
     # ========================================================================
     
     def calculate_position_size(self, symbol, strategy_name, price):
-        """Calculate position size for a strategy with dynamic allocation"""
+        """Calculate position size with AUTO-COMPOUNDING! 💰"""
         try:
             strategy = STRATEGIES[strategy_name]
             
-            # 🔧 FIX: Use CURRENT total equity, not initial capital!
-            # This allows position sizes to scale with P&L (grow when winning, shrink when losing)
+            # 💰💰 AUTO-COMPOUNDING ENABLED! 💰💰
+            # Position sizes GROW as you profit, SHRINK if you lose!
             total_equity = self.current_capital + self.reserved_capital
+            
+            # 🎯 COMPOUNDING MULTIPLIER (how much bigger positions are now vs start)
+            compounding_multiplier = total_equity / self.initial_capital if self.initial_capital > 0 else 1.0
+            
+            # Log compounding effect every 10th position
+            if not hasattr(self, '_position_count'):
+                self._position_count = 0
+            self._position_count += 1
+            
+            if self._position_count % 10 == 0 or compounding_multiplier != 1.0:
+                logger.info(f"💰 AUTO-COMPOUND: Initial ${self.initial_capital:.2f} → Current ${total_equity:.2f} ({compounding_multiplier:.2f}x)")
+                if compounding_multiplier > 1.0:
+                    logger.info(f"   📈 Position sizes are {(compounding_multiplier-1)*100:.1f}% LARGER due to profits!")
+                elif compounding_multiplier < 1.0:
+                    logger.info(f"   📉 Position sizes are {(1-compounding_multiplier)*100:.1f}% smaller (capital protection)")
             
             # 🚀 DYNAMIC CAPITAL ALLOCATION: Adjust based on market regime!
             base_capital_pct = strategy['capital_pct']
@@ -1816,9 +1831,9 @@ class UltimateHybridBot:
             else:
                 adjusted_capital_pct = base_capital_pct
             
-            # Available capital for this strategy
+            # Available capital for this strategy (AUTO-COMPOUNDING!)
             available_capital = self.current_capital  # Free capital
-            strategy_capital = total_equity * adjusted_capital_pct  # Dynamically adjusted!
+            strategy_capital = total_equity * adjusted_capital_pct  # Grows with profits!
             
             # Use smaller of the two
             capital_to_use = min(available_capital, strategy_capital)
@@ -2511,6 +2526,11 @@ def get_stats():
         logger.debug(f"  Reserved: ${trading_bot.reserved_capital:.2f}")
         logger.debug(f"  Total P&L: ${total_pnl:.2f}")
         
+        # 💰 AUTO-COMPOUNDING STATS
+        total_equity = trading_bot.current_capital + trading_bot.reserved_capital
+        compounding_multiplier = total_equity / trading_bot.initial_capital if trading_bot.initial_capital > 0 else 1.0
+        compounding_pct = (compounding_multiplier - 1) * 100
+        
         stats_response = {
             'start_time': start_time_str,
             'total_trades': total,  # 🔧 FIX: Only closed trades count!
@@ -2527,11 +2547,17 @@ def get_stats():
             'api_keys_count': len(trading_bot.api_keys),
             'market_regime': trading_bot.current_market_regime,
             'scan_frequency': '45 seconds',
+            # 💰 AUTO-COMPOUNDING STATS
+            'initial_capital': trading_bot.initial_capital,
+            'total_equity': total_equity,
+            'compounding_multiplier': compounding_multiplier,
+            'compounding_pct': compounding_pct,
             'features': {
                 'grid_trading': True,
                 'dynamic_allocation': True,
                 'api_rotation': True,
-                'dynamic_hold_time': True
+                'dynamic_hold_time': True,
+                'auto_compounding': True  # ✅ NEW!
             }
         }
         
@@ -3272,6 +3298,11 @@ def dashboard():
                             <div style="font-size: 0.9em; opacity: 0.8;">📈 Market Regime</div>
                             <div id="market-regime" style="font-size: 1.3em; font-weight: bold; color: #a78bfa;">NEUTRAL</div>
                         </div>
+                        <div style="text-align: center; grid-column: 1 / -1; margin-top: 10px; padding: 15px; background: rgba(76, 175, 80, 0.1); border-radius: 10px; border: 2px solid rgba(76, 175, 80, 0.3);">
+                            <div style="font-size: 0.9em; opacity: 0.8;">💰 AUTO-COMPOUNDING ACTIVE</div>
+                            <div id="compounding-info" style="font-size: 1.4em; font-weight: bold; color: #4ade80; margin-top: 5px;">1.00x (0.0%)</div>
+                            <div id="compounding-desc" style="font-size: 0.85em; opacity: 0.9; margin-top: 5px; color: #a3e635;">Position sizes auto-adjust with profits!</div>
+                        </div>
                     </div>
                     
                     <div style="
@@ -3597,6 +3628,30 @@ def dashboard():
                                 'NEUTRAL': '#a78bfa'
                             };
                             regimeEl.style.color = colors[data.market_regime.replace(/_/g, ' ')] || '#a78bfa';
+                        }
+                        
+                        // 💰 UPDATE AUTO-COMPOUNDING INFO
+                        if (data.compounding_multiplier !== undefined && data.compounding_pct !== undefined) {
+                            const multiplier = data.compounding_multiplier.toFixed(2);
+                            const pct = data.compounding_pct.toFixed(1);
+                            const sign = data.compounding_pct >= 0 ? '+' : '';
+                            const color = data.compounding_pct >= 0 ? '#4ade80' : '#f87171';
+                            
+                            const compoundEl = document.getElementById('compounding-info');
+                            compoundEl.textContent = `${multiplier}x (${sign}${pct}%)`;
+                            compoundEl.style.color = color;
+                            
+                            const descEl = document.getElementById('compounding-desc');
+                            if (data.compounding_pct > 0) {
+                                descEl.textContent = `Position sizes are ${pct}% LARGER! 🚀`;
+                                descEl.style.color = '#4ade80';
+                            } else if (data.compounding_pct < 0) {
+                                descEl.textContent = `Position sizes ${Math.abs(parseFloat(pct))}% smaller (protection mode)`;
+                                descEl.style.color = '#fb923c';
+                            } else {
+                                descEl.textContent = 'Position sizes auto-adjust with profits!';
+                                descEl.style.color = '#a3e635';
+                            }
                         }
                         
                         // Strategy stats
