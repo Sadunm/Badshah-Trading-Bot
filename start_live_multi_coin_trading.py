@@ -413,6 +413,14 @@ class UltimateHybridBot:
         self.price_cache = {}  # {symbol: (price, timestamp)}
         self.cache_ttl = 10  # Cache valid for 10 seconds
         
+        # 🎯 ROUND 7 FIX #4: Symbol cooldown to prevent churning
+        self.symbol_cooldowns = {}  # {symbol: cooldown_until_datetime}
+        
+        # 🎯 ROUND 7 FIX #6: Losing streak protection
+        self.consecutive_losses = 0
+        self.daily_trade_count = 0
+        self.last_trade_date = datetime.now().date()
+        
         # Capital management
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
@@ -1320,8 +1328,8 @@ class UltimateHybridBot:
         ind = data['indicators']
         price = data['price']
         
-        # 🎯 IMPROVEMENT: Volume filter to avoid false signals
-        if ind['volume_ratio'] < 1.2:
+        # 🎯 ROUND 7 FIX #8: Higher volume filter for better quality (was 1.2)
+        if ind['volume_ratio'] < 1.5:
             return None
         
         # High volatility required
@@ -1343,8 +1351,8 @@ class UltimateHybridBot:
         """DAY TRADING: 1-8 hour holds on volatility"""
         ind = data['indicators']
         
-        # 🎯 IMPROVEMENT: Volume filter
-        if ind['volume_ratio'] < 1.2:
+        # 🎯 ROUND 7 FIX #8: Higher volume filter (was 1.2)
+        if ind['volume_ratio'] < 1.4:
             return None
         
         # Moderate volatility
@@ -1368,8 +1376,8 @@ class UltimateHybridBot:
         sr = data['sr_levels']
         price = data['price']
         
-        # 🎯 IMPROVEMENT: Volume filter
-        if ind['volume_ratio'] < 1.1:  # Slightly lower for swing (longer timeframe)
+        # 🎯 ROUND 7 FIX #8: Higher volume filter (was 1.1)
+        if ind['volume_ratio'] < 1.3:
             return None
         
         # Strong trend required
@@ -1530,6 +1538,16 @@ class UltimateHybridBot:
         # 🔧 FIX: Thread-safe position opening
         with self.data_lock:
             try:
+                # 🎯 ROUND 7 FIX #4: Check symbol cooldown first!
+                if symbol in self.symbol_cooldowns:
+                    if datetime.now() < self.symbol_cooldowns[symbol]:
+                        remaining = (self.symbol_cooldowns[symbol] - datetime.now()).total_seconds() / 60
+                        logger.debug(f"⏸️ {symbol} in cooldown ({remaining:.1f}min remaining), skipping")
+                        return False
+                    else:
+                        # Cooldown expired, remove it
+                        del self.symbol_cooldowns[symbol]
+                
                 # 🔧 FIX: Check MAX_TOTAL_POSITIONS (most critical!)
                 MAX_TOTAL_POSITIONS = 5  # Never more than 5 positions total!
                 if len(self.positions) >= MAX_TOTAL_POSITIONS:
@@ -1613,7 +1631,10 @@ class UltimateHybridBot:
                 if len(self.trades) > 1000:
                     self.trades = self.trades[-1000:]
                 
-                logger.info(f"✅ OPENED {action} | {symbol} | {strategy_name} | {quantity:.4f} @ ${exec_price:.2f} | {reason}")
+                # 🎯 ROUND 7 FIX #6: Increment daily trade counter
+                self.daily_trade_count += 1
+                
+                logger.info(f"✅ OPENED {action} | {symbol} | {strategy_name} | {quantity:.4f} @ ${exec_price:.2f} | {reason} | Trade #{self.daily_trade_count}/20")
                 
                 return True
                 
@@ -1752,6 +1773,19 @@ class UltimateHybridBot:
                 emoji = "🎉" if pnl > 0 else "❌"
                 logger.info(f"{emoji} CLOSED | {symbol} | {strategy_name} | PnL: ${pnl:.2f} ({pnl_pct:+.2f}%) | Hold: {hold_time:.0f}min | {reason}")
                 
+                # 🎯 ROUND 7 FIX #6: Track consecutive losses
+                if pnl < 0:
+                    self.consecutive_losses += 1
+                    logger.warning(f"⚠️ Consecutive losses: {self.consecutive_losses}")
+                else:
+                    self.consecutive_losses = 0  # Reset on win
+                
+                # 🎯 ROUND 7 FIX #4: Add cooldown after closing to prevent re-entry
+                from datetime import timedelta
+                COOLDOWN_MINUTES = 10  # Don't re-enter same symbol for 10 minutes
+                self.symbol_cooldowns[symbol] = datetime.now() + timedelta(minutes=COOLDOWN_MINUTES)
+                logger.debug(f"🕒 Cooldown set for {symbol}: {COOLDOWN_MINUTES} minutes")
+                
                 # Remove position
                 del self.positions[position_key]
                 
@@ -1769,6 +1803,9 @@ class UltimateHybridBot:
         with self.data_lock:
             positions_snapshot = dict(self.positions)
         
+        # 🎯 ROUND 7 FIX #2: Minimum hold time to let momentum develop
+        MIN_HOLD_TIME_MINUTES = 5  # Don't exit before 5 minutes!
+        
         for position_key, position in positions_snapshot.items():
             try:
                 symbol = position['symbol']
@@ -1780,6 +1817,16 @@ class UltimateHybridBot:
                 if current_price is None:
                     continue
                 
+                # 🎯 ROUND 7 FIX #2: Check minimum hold time
+                try:
+                    if isinstance(position.get('entry_time'), datetime):
+                        hold_time_minutes = (datetime.now() - position['entry_time']).total_seconds() / 60
+                        if hold_time_minutes < MIN_HOLD_TIME_MINUTES:
+                            # Skip this position - too early to exit!
+                            continue
+                except:
+                    pass  # If error, proceed with normal logic
+                
                 # ==================================================================
                 # SMART CONFIDENCE-BASED EXIT (Priority #1)
                 # ==================================================================
@@ -1789,9 +1836,20 @@ class UltimateHybridBot:
                 else:
                     current_gain_pct = ((position['entry_price'] - current_price) / position['entry_price']) * 100
                 
-                # ⚡ ARBITRAGE-STYLE EXIT: Lock tiny profits immediately!
-                # User wants INSTANT profit-taking, no waiting!
-                if current_gain_pct >= 0.3:  # ✅ Lock at 0.3%+ profit!
+                # 🎯 ROUND 7 FIX #1 & #7: Increase minimum to 0.8% (removed tiny 0.3% tier!)
+                # Strategy-specific minimums (FIX #10)
+                STRATEGY_MIN_PROFITS = {
+                    'SCALPING': 0.8,
+                    'DAY_TRADING': 1.0,
+                    'SWING_TRADING': 1.5,
+                    'RANGE_TRADING': 1.0,
+                    'MOMENTUM': 1.2,
+                    'POSITION_TRADING': 2.0
+                }
+                min_profit_for_strategy = STRATEGY_MIN_PROFITS.get(strategy_name, 0.8)
+                
+                # Only consider early exit if above minimum threshold
+                if current_gain_pct >= min_profit_for_strategy:
                     confidence, details = self.calculate_target_confidence(
                         symbol, 
                         current_price, 
@@ -1804,38 +1862,43 @@ class UltimateHybridBot:
                     position['target_confidence'] = confidence
                     position['confidence_details'] = details
                     
-                    # AGGRESSIVE PROFIT LOCKING LOGIC:
-                    # - Tiny profit (0.3-0.8%) + low confidence → LOCK IT!
-                    # - Medium profit (0.8-1.5%) + medium confidence → LOCK IT!
-                    # - Good profit (1.5%+) + high confidence → Let it run to target
+                    # 🎯 ROUND 7 FIX #3 & #7: NEW 3-TIER SYSTEM (Removed tiny tier!)
+                    # - SMALL profit (0.8-1.2%) → Lock ONLY if conf < 50% (very strict!)
+                    # - MEDIUM profit (1.2-2.0%) → Lock if conf < 45%
+                    # - GOOD profit (2.0%+) → Lock if conf < 40%
+                    # Goal: Let profitable positions RUN to targets!
                     
-                    if current_gain_pct >= 0.3 and current_gain_pct < 0.8:
-                        # TINY profit: Lock if confidence < 70%
-                        if confidence < 70:
-                            reason = f"Quick Lock ({confidence}% conf, +{current_gain_pct:.2f}%)"
-                            logger.info(f"🔒 QUICK LOCK: {symbol} | Tiny Profit | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}%")
+                    if current_gain_pct >= min_profit_for_strategy and current_gain_pct < 1.2:
+                        # SMALL profit: Lock only if confidence VERY low (< 50%)
+                        if confidence < 50:
+                            reason = f"Early Lock ({confidence}% conf, +{current_gain_pct:.2f}%)"
+                            logger.info(f"🔒 EARLY LOCK: {symbol} | Small Profit | Confidence: {confidence}% < 50% | Gain: +{current_gain_pct:.2f}%")
                             positions_to_close.append((position_key, current_price, reason))
                             continue
+                        else:
+                            logger.debug(f"⏳ HOLDING: {symbol} | {confidence}% conf ≥ 50% | +{current_gain_pct:.2f}% → Waiting for more")
                     
-                    elif current_gain_pct >= 0.8 and current_gain_pct < 1.5:
-                        # SMALL profit: Lock if confidence < 65%
-                        if confidence < 65:
+                    elif current_gain_pct >= 1.2 and current_gain_pct < 2.0:
+                        # MEDIUM profit: Lock if confidence < 45%
+                        if confidence < 45:
                             reason = f"Smart Lock ({confidence}% conf, +{current_gain_pct:.2f}%)"
-                            logger.info(f"🔒 SMART LOCK: {symbol} | Small Profit | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}%")
+                            logger.info(f"🔒 SMART LOCK: {symbol} | Medium Profit | Confidence: {confidence}% < 45% | Gain: +{current_gain_pct:.2f}%")
                             positions_to_close.append((position_key, current_price, reason))
                             continue
+                        else:
+                            logger.debug(f"⏳ HOLDING: {symbol} | {confidence}% conf ≥ 45% | +{current_gain_pct:.2f}% → Aiming for target")
                     
-                    elif current_gain_pct >= 1.5:
-                        # GOOD profit: Only lock if confidence VERY low (< 60%)
-                        # Otherwise let it run to target!
-                        if confidence < 60:
-                            reason = f"Conservative Lock ({confidence}% conf, +{current_gain_pct:.2f}%)"
-                            logger.info(f"🔒 LOCKING PROFIT: {symbol} | Good Profit | Confidence: {confidence}% < 60% | Gain: +{current_gain_pct:.2f}%")
+                    elif current_gain_pct >= 2.0:
+                        # GOOD profit: Only lock if confidence EXTREMELY low (< 40%)
+                        # Otherwise let it RUN TO TARGET!
+                        if confidence < 40:
+                            reason = f"Safety Lock ({confidence}% conf, +{current_gain_pct:.2f}%)"
+                            logger.info(f"🔒 SAFETY LOCK: {symbol} | Good Profit | Confidence: {confidence}% < 40% | Gain: +{current_gain_pct:.2f}%")
                             positions_to_close.append((position_key, current_price, reason))
                             continue
                         else:
                             # High confidence - LET IT RUN TO TARGET!
-                            logger.debug(f"⏳ LETTING IT RUN: {symbol} | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}% → Target!")
+                            logger.debug(f"🚀 LETTING IT RUN: {symbol} | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}% → TARGET!")
                 
                 # ==================================================================
                 # TRADITIONAL EXITS (Priority #2)
@@ -1907,6 +1970,34 @@ class UltimateHybridBot:
                 self.manage_positions()
                 self.print_status()
                 return  # Skip opening new positions
+            
+            # 🎯 ROUND 7 FIX #6: Losing Streak Protection
+            CONSECUTIVE_LOSS_LIMIT = 3
+            if self.consecutive_losses >= CONSECUTIVE_LOSS_LIMIT:
+                logger.warning(f"🚨 {self.consecutive_losses} CONSECUTIVE LOSSES - Taking 30min break to cool off!")
+                logger.warning(f"   This protects capital during bad market conditions.")
+                # Manage existing positions only
+                self.manage_positions()
+                self.print_status()
+                # Reset counter and take a break
+                self.consecutive_losses = 0
+                time.sleep(1800)  # 30 minute pause
+                return
+            
+            # 🎯 ROUND 7 FIX #6: Daily Trade Limit (Quality over Quantity!)
+            MAX_DAILY_TRADES = 20
+            # Reset daily counter if new day
+            if datetime.now().date() > self.last_trade_date:
+                self.daily_trade_count = 0
+                self.last_trade_date = datetime.now().date()
+            
+            if self.daily_trade_count >= MAX_DAILY_TRADES:
+                logger.warning(f"✋ MAX DAILY TRADES ({MAX_DAILY_TRADES}) REACHED - Done for today!")
+                logger.warning(f"   Quality > Quantity. See you tomorrow! 😊")
+                # Manage existing positions only
+                self.manage_positions()
+                self.print_status()
+                return
             
             # Step 1: Manage existing positions
             self.manage_positions()
