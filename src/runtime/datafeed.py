@@ -109,8 +109,9 @@ class LiveDataFeed:
 					# Thread-safe update of shared data
 					with self._data_lock:
 						self._ticks[symbol] = price
-			except Exception:
-				pass
+			except Exception as e:
+				# 🔥 BUG FIX: Added logging instead of silent pass!
+				logging.debug(f"WebSocket message parse error for {symbol}: {e}")
 
 		def on_error(_: WebSocketApp, error: Exception):
 			logging.error(f"WebSocket error: {error}")
@@ -120,7 +121,9 @@ class LiveDataFeed:
 			try:
 				ws = WebSocketApp(url, on_message=on_message, on_error=on_error)
 				ws.run_forever(ping_interval=20, ping_timeout=10)
-			except Exception:
+			except Exception as e:
+				# 🔥 BUG FIX: Added logging for WebSocket disconnections!
+				logging.warning(f"WebSocket disconnected for {symbol}, reconnecting in {self.reconnect_backoff}s: {e}")
 				time.sleep(self.reconnect_backoff)
 			if self._stop.is_set():
 				break
