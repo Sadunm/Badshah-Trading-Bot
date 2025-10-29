@@ -368,7 +368,6 @@ COIN_UNIVERSE = [
     'SHIBUSDT',   # Meme giant - sharp moves
     'PEPEUSDT',   # Viral meme - insane volatility
     'FLOKIUSDT',  # Meme runner - fast pumps
-    '1000BONKUSDT', # Bonk meme - explosive moves
 ]
 
 # 📊 SELECTION CRITERIA:
@@ -1186,7 +1185,8 @@ class UltimateHybridBot:
             strategy = STRATEGIES[strategy_name]
             
             # Available capital for this strategy
-            available_capital = self.current_capital - self.reserved_capital
+            # 🔧 FIX: current_capital already excludes reserved capital, don't double-count!
+            available_capital = self.current_capital  # Not minus reserved!
             strategy_capital = self.initial_capital * strategy['capital_pct']
             
             # Use smaller of the two
@@ -1265,7 +1265,8 @@ class UltimateHybridBot:
                 'reason': reason,
                 'confidence': confidence,
                 'market_condition': market_condition,
-                'target_confidence': None  # Will be calculated when in profit
+                'target_confidence': None,  # Will be calculated when in profit
+                'position_value': position_value  # 🔧 FIX: Store original position value for accurate capital tracking
             }
             
             # Log trade with market condition
@@ -1315,7 +1316,8 @@ class UltimateHybridBot:
             
             # Update capital
             self.current_capital += proceeds
-            self.reserved_capital -= (position['quantity'] * position['entry_price'])
+            # 🔧 FIX: Use stored position_value for accurate capital tracking
+            self.reserved_capital -= position.get('position_value', position['quantity'] * position['entry_price'])
             
             # Update strategy stats
             self.strategy_stats[strategy_name]['trades'] += 1
@@ -1510,6 +1512,19 @@ class UltimateHybridBot:
     def run_trading_cycle(self):
         """Main trading logic"""
         try:
+            # 🔧 CRITICAL SAFETY: Daily Loss Limit Protection
+            DAILY_LOSS_LIMIT = 200  # $200 max loss per day
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            today_pnl = self.analytics.daily_stats.get(today_str, {}).get('pnl', 0)
+            
+            if today_pnl < -DAILY_LOSS_LIMIT:
+                logger.warning(f"🛑 DAILY LOSS LIMIT HIT! Loss today: ${today_pnl:.2f} | Limit: ${DAILY_LOSS_LIMIT}")
+                logger.warning(f"⏸️  Pausing new trades for today. Managing existing positions only.")
+                # Still manage positions (close losing trades, let winners run)
+                self.manage_positions()
+                self.print_status()
+                return  # Skip opening new positions
+            
             # Step 1: Manage existing positions
             self.manage_positions()
             
