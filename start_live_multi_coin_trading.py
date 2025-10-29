@@ -2535,6 +2535,10 @@ class UltimateHybridBot:
                     # - GOOD profit (2.0%+) → Lock if conf < 40%
                     # Goal: Let profitable positions RUN to targets!
                     
+                    # 🔧 BUG FIX: min_profit_for_strategy was undefined!
+                    # For ultra-aggressive mode, we already exit at 0.15%, so this only applies to bigger gains
+                    min_profit_for_strategy = 0.8  # 0.8% minimum for tiered logic
+                    
                     if current_gain_pct >= min_profit_for_strategy and current_gain_pct < 1.2:
                         # SMALL profit: Lock only if confidence VERY low (< 50%)
                         if confidence < 50:
