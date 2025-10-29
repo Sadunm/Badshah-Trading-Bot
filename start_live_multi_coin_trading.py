@@ -1165,10 +1165,123 @@ class UltimateHybridBot:
     # STRATEGY SIGNAL GENERATORS
     # ========================================================================
     
+    def calculate_signal_confidence(self, indicators, signal_type, base_confidence=50):
+        """
+        🎯 IMPROVEMENT: Dynamic confidence calculation based on signal strength
+        Returns confidence as float 0-1
+        """
+        confidence = base_confidence
+        
+        try:
+            if signal_type == 'BUY':
+                # RSI strength (lower = stronger buy signal)
+                if indicators['rsi'] < 25:
+                    confidence += 20
+                elif indicators['rsi'] < 30:
+                    confidence += 15
+                elif indicators['rsi'] < 35:
+                    confidence += 12
+                elif indicators['rsi'] < 40:
+                    confidence += 8
+                elif indicators['rsi'] < 45:
+                    confidence += 5
+                
+                # Volume confirmation (crucial!)
+                if indicators['volume_ratio'] > 2.5:
+                    confidence += 15
+                elif indicators['volume_ratio'] > 2.0:
+                    confidence += 12
+                elif indicators['volume_ratio'] > 1.5:
+                    confidence += 8
+                elif indicators['volume_ratio'] > 1.2:
+                    confidence += 4
+                
+                # Trend alignment
+                if indicators['ema_9'] > indicators['ema_21'] > indicators['ema_50']:
+                    confidence += 12  # Strong uptrend
+                elif indicators['ema_9'] > indicators['ema_21']:
+                    confidence += 6  # Weak uptrend
+                
+                # MACD confirmation
+                if indicators['macd'] > indicators['macd_signal']:
+                    macd_strength = abs(indicators['macd'] - indicators['macd_signal'])
+                    if macd_strength > 10:
+                        confidence += 8
+                    else:
+                        confidence += 4
+                
+                # Momentum confirmation
+                if indicators['momentum_3'] > 0:
+                    confidence += 3
+                if indicators['momentum_10'] > 0:
+                    confidence += 3
+            
+            elif signal_type == 'SELL':
+                # RSI strength (higher = stronger sell signal)
+                if indicators['rsi'] > 75:
+                    confidence += 20
+                elif indicators['rsi'] > 70:
+                    confidence += 15
+                elif indicators['rsi'] > 65:
+                    confidence += 12
+                elif indicators['rsi'] > 60:
+                    confidence += 8
+                elif indicators['rsi'] > 55:
+                    confidence += 5
+                
+                # Volume confirmation
+                if indicators['volume_ratio'] > 2.5:
+                    confidence += 15
+                elif indicators['volume_ratio'] > 2.0:
+                    confidence += 12
+                elif indicators['volume_ratio'] > 1.5:
+                    confidence += 8
+                elif indicators['volume_ratio'] > 1.2:
+                    confidence += 4
+                
+                # Trend alignment
+                if indicators['ema_9'] < indicators['ema_21'] < indicators['ema_50']:
+                    confidence += 12  # Strong downtrend
+                elif indicators['ema_9'] < indicators['ema_21']:
+                    confidence += 6  # Weak downtrend
+                
+                # MACD confirmation
+                if indicators['macd'] < indicators['macd_signal']:
+                    macd_strength = abs(indicators['macd'] - indicators['macd_signal'])
+                    if macd_strength > 10:
+                        confidence += 8
+                    else:
+                        confidence += 4
+                
+                # Momentum confirmation
+                if indicators['momentum_3'] < 0:
+                    confidence += 3
+                if indicators['momentum_10'] < 0:
+                    confidence += 3
+            
+            # Volatility factor (higher volatility = slightly lower confidence)
+            if indicators['atr_pct'] > 5:
+                confidence -= 5  # Very volatile, less predictable
+            elif indicators['atr_pct'] > 3:
+                confidence -= 3
+            
+            # Cap at 95% (never 100% certain)
+            confidence = min(95, max(30, confidence))
+            
+            return confidence / 100  # Return as 0-1
+            
+        except Exception as e:
+            logger.warning(f"Error calculating signal confidence: {e}")
+            return 0.70  # Safe default
+    
     def generate_scalping_signal(self, symbol, data):
         """SCALPING: Quick 1-60min trades on volatility"""
         ind = data['indicators']
         price = data['price']
+        
+        # 🎯 IMPROVEMENT: Volume filter to avoid false signals
+        if ind['volume_ratio'] < 1.2:
+            return None
         
         # High volatility required
         if ind['atr_pct'] < 1.5:
@@ -1176,10 +1289,12 @@ class UltimateHybridBot:
         
         # Quick momentum signals
         if ind['rsi'] < 45 and ind['momentum_3'] < -0.5:
-            return {'action': 'BUY', 'reason': 'Scalping Dip', 'confidence': 0.7}
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=55)
+            return {'action': 'BUY', 'reason': 'Scalping Dip', 'confidence': confidence}
         
         if ind['rsi'] > 55 and ind['momentum_3'] > 0.5:
-            return {'action': 'SELL', 'reason': 'Scalping Pump', 'confidence': 0.7}
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=55)
+            return {'action': 'SELL', 'reason': 'Scalping Pump', 'confidence': confidence}
         
         return None
     
@@ -1187,16 +1302,22 @@ class UltimateHybridBot:
         """DAY TRADING: 1-8 hour holds on volatility"""
         ind = data['indicators']
         
+        # 🎯 IMPROVEMENT: Volume filter
+        if ind['volume_ratio'] < 1.2:
+            return None
+        
         # Moderate volatility
         if ind['atr_pct'] < 1.0:
             return None
         
         # Trend + RSI
         if ind['ema_9'] > ind['ema_21'] and ind['rsi'] < 50:
-            return {'action': 'BUY', 'reason': 'Day Trade Uptrend Dip', 'confidence': 0.75}
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=60)
+            return {'action': 'BUY', 'reason': 'Day Trade Uptrend Dip', 'confidence': confidence}
         
         if ind['ema_9'] < ind['ema_21'] and ind['rsi'] > 50:
-            return {'action': 'SELL', 'reason': 'Day Trade Downtrend Rally', 'confidence': 0.75}
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=60)
+            return {'action': 'SELL', 'reason': 'Day Trade Downtrend Rally', 'confidence': confidence}
         
         return None
     
@@ -1206,24 +1327,30 @@ class UltimateHybridBot:
         sr = data['sr_levels']
         price = data['price']
         
+        # 🎯 IMPROVEMENT: Volume filter
+        if ind['volume_ratio'] < 1.1:  # Slightly lower for swing (longer timeframe)
+            return None
+        
         # Strong trend required
         uptrend = ind['ema_9'] > ind['ema_21'] > ind['ema_50']
         downtrend = ind['ema_9'] < ind['ema_21'] < ind['ema_50']
         
         # Buy dips in uptrend
         if uptrend and ind['rsi'] < 45:
-            return {'action': 'BUY', 'reason': 'Swing Buy Uptrend Dip', 'confidence': 0.85}
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=65)
+            return {'action': 'BUY', 'reason': 'Swing Buy Uptrend Dip', 'confidence': confidence}
         
         # Near support in uptrend
-        # 🔧 FIX: Check list not empty before min()
         if uptrend and sr['support'] and len(sr['support']) > 0:
             distances = [abs(price - s) / price for s in sr['support']]
             if distances and min(distances) < 0.015:
-                return {'action': 'BUY', 'reason': 'Swing Buy Support', 'confidence': 0.8}
+                confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=62)
+                return {'action': 'BUY', 'reason': 'Swing Buy Support', 'confidence': confidence}
         
         # Sell rallies in downtrend
         if downtrend and ind['rsi'] > 55:
-            return {'action': 'SELL', 'reason': 'Swing Sell Downtrend Rally', 'confidence': 0.8}
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=62)
+            return {'action': 'SELL', 'reason': 'Swing Sell Downtrend Rally', 'confidence': confidence}
         
         return None
     
@@ -1233,8 +1360,11 @@ class UltimateHybridBot:
         sr = data['sr_levels']
         price = data['price']
         
+        # 🎯 IMPROVEMENT: Volume filter
+        if ind['volume_ratio'] < 1.1:
+            return None
+        
         # Ranging market (low trend strength)
-        # 🔧 FIX: Zero-division protection
         if ind['ema_21'] > 0:
             trend_strength = abs(ind['ema_9'] - ind['ema_21']) / ind['ema_21']
             if trend_strength > 0.02:
@@ -1243,22 +1373,22 @@ class UltimateHybridBot:
             return None  # Invalid EMA
         
         # Near support
-        # 🔧 FIX: Check list not empty before min()
         if sr['support'] and len(sr['support']) > 0:
             distances = [abs(price - s) / price for s in sr['support']]
             if distances:
                 dist_to_support = min(distances)
                 if dist_to_support < 0.01 and ind['rsi'] < 45:
-                    return {'action': 'BUY', 'reason': 'Range Bottom', 'confidence': 0.75}
+                    confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=58)
+                    return {'action': 'BUY', 'reason': 'Range Bottom', 'confidence': confidence}
         
         # Near resistance
-        # 🔧 FIX: Check list not empty before min()
         if sr['resistance'] and len(sr['resistance']) > 0:
             distances = [abs(price - r) / price for r in sr['resistance']]
             if distances:
                 dist_to_resistance = min(distances)
                 if dist_to_resistance < 0.01 and ind['rsi'] > 55:
-                    return {'action': 'SELL', 'reason': 'Range Top', 'confidence': 0.75}
+                    confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=58)
+                    return {'action': 'SELL', 'reason': 'Range Top', 'confidence': confidence}
         
         return None
     
@@ -1266,17 +1396,23 @@ class UltimateHybridBot:
         """MOMENTUM: Ride strong trends"""
         ind = data['indicators']
         
+        # 🎯 IMPROVEMENT: Volume filter (stronger requirement for momentum)
+        if ind['volume_ratio'] < 1.5:  # Higher volume needed for momentum
+            return None
+        
         # Strong momentum required
         if abs(ind['momentum_10']) < 3.0:
             return None
         
         # Bullish momentum
         if ind['momentum_10'] > 3.0 and ind['macd'] > ind['macd_signal'] and ind['rsi'] < 65:
-            return {'action': 'BUY', 'reason': 'Strong Momentum Up', 'confidence': 0.8}
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=62)
+            return {'action': 'BUY', 'reason': 'Strong Momentum Up', 'confidence': confidence}
         
         # Bearish momentum
         if ind['momentum_10'] < -3.0 and ind['macd'] < ind['macd_signal'] and ind['rsi'] > 35:
-            return {'action': 'SELL', 'reason': 'Strong Momentum Down', 'confidence': 0.8}
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=62)
+            return {'action': 'SELL', 'reason': 'Strong Momentum Down', 'confidence': confidence}
         
         return None
     
@@ -1284,13 +1420,19 @@ class UltimateHybridBot:
         """POSITION TRADING: Long-term holds on major trends"""
         ind = data['indicators']
         
+        # 🎯 IMPROVEMENT: Volume filter
+        if ind['volume_ratio'] < 1.1:
+            return None
+        
         # Golden Cross (very bullish)
         if ind['ema_50'] > ind['ema_200'] and ind['rsi'] < 55:
-            return {'action': 'BUY', 'reason': 'Golden Cross Zone', 'confidence': 0.9}
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=70)
+            return {'action': 'BUY', 'reason': 'Golden Cross Zone', 'confidence': confidence}
         
         # Death Cross (very bearish)
         if ind['ema_50'] < ind['ema_200'] and ind['rsi'] > 45:
-            return {'action': 'SELL', 'reason': 'Death Cross Zone', 'confidence': 0.85}
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=68)
+            return {'action': 'SELL', 'reason': 'Death Cross Zone', 'confidence': confidence}
         
         return None
     
