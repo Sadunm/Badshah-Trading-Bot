@@ -2323,7 +2323,7 @@ def get_trade_history():
                             'stop_loss': float(row.get('stop_loss', 0)) if row.get('stop_loss') else 0.0,
                             'take_profit': float(row.get('take_profit', 0)) if row.get('take_profit') else 0.0,
                             'confidence': float(row.get('confidence', 0)) if row.get('confidence') else 0.0,
-                            'is_win': float(row.get('pnl', 0)) > 0 if row.get('pnl') else False
+                            'is_win': bool(float(row.get('pnl', 0)) > 0 if row.get('pnl') else False)  # 🔧 FIX: Convert to native bool
                         }
                         trade_history.append(trade_record)
                     except (ValueError, TypeError) as e:
@@ -2361,7 +2361,7 @@ def get_trade_history():
                 'stop_loss': close_trade.get('stop_loss', 0),
                 'take_profit': close_trade.get('take_profit', 0),
                 'confidence': entry_trade.get('confidence', 0) if entry_trade else 0,
-                'is_win': close_trade['pnl'] > 0
+                'is_win': bool(close_trade['pnl'] > 0)  # 🔧 FIX: Convert to native bool for JSON
             }
             trade_history.append(trade_record)
         
