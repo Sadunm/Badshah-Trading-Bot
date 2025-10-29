@@ -179,7 +179,12 @@ class PaperTradingSystem:
         """Get performance metrics"""
         try:
             current_value = self.get_portfolio_value()
-            total_return = ((current_value - self.initial_capital) / self.initial_capital) * 100
+            
+            # 🔥 BUG FIX: Check for zero initial_capital before division!
+            if self.initial_capital == 0:
+                total_return = 0
+            else:
+                total_return = ((current_value - self.initial_capital) / self.initial_capital) * 100
             
             # Calculate win rate
             if self.trades:
@@ -191,7 +196,12 @@ class PaperTradingSystem:
                         if sell_order['price'] > buy_order['price']:
                             profitable_trades += 1
                 
-                win_rate = (profitable_trades / (len(self.trades) // 2)) * 100 if len(self.trades) > 1 else 0
+                # 🔥 BUG FIX: Check for zero division in win rate calculation!
+                total_closed_trades = len(self.trades) // 2
+                if total_closed_trades > 0:
+                    win_rate = (profitable_trades / total_closed_trades) * 100
+                else:
+                    win_rate = 0
             else:
                 win_rate = 0
             

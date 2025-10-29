@@ -34,6 +34,7 @@ class PaperTrader:
         # Trading state
         self.positions = {}
         self.balance = 10000.0  # Starting balance
+        self.initial_balance = self.balance  # 🔥 SAVE initial balance for return calculations!
         self.daily_pnl = 0.0
         self.total_trades = 0
         self.trade_history = []
@@ -198,7 +199,11 @@ class PaperTrader:
             winning_trades = [t for t in self.trade_history if t['pnl'] > 0]
             losing_trades = [t for t in self.trade_history if t['pnl'] < 0]
             
-            win_rate = len(winning_trades) / len(self.trade_history) * 100
+            # 🔥 BUG FIX: Check for empty trade_history before division!
+            if len(self.trade_history) > 0:
+                win_rate = len(winning_trades) / len(self.trade_history) * 100
+            else:
+                win_rate = 0
             avg_win = np.mean([t['pnl'] for t in winning_trades]) if winning_trades else 0
             avg_loss = np.mean([t['pnl'] for t in losing_trades]) if losing_trades else 0
             
@@ -212,7 +217,8 @@ class PaperTrader:
                     'win_rate': win_rate,
                     'total_pnl': total_pnl,
                     'final_balance': self.balance,
-                    'return_pct': (self.balance - 10000) / 10000 * 100
+                    # 🔥 BUG FIX: Use initial_balance, not hardcoded 10000! Also check for zero division!
+                    'return_pct': (self.balance - self.initial_balance) / self.initial_balance * 100 if self.initial_balance > 0 else 0
                 },
                 'risk_metrics': {
                     'max_daily_loss': self.daily_pnl,
