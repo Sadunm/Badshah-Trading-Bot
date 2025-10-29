@@ -2119,31 +2119,16 @@ class UltimateHybridBot:
                 if current_price is None:
                     continue
                 
-                # 🚀 CALCULATE DYNAMIC MINIMUM HOLD TIME
-                # Based on how far the target is!
-                entry_price = position['entry_price']
-                take_profit = position['take_profit']
+                # 🔥 ULTRA-AGGRESSIVE LOW CAPITAL MODE 🔥
+                # MINIMUM hold time: Just 30 seconds! (User wants FAST exits for low capital!)
+                MIN_HOLD_TIME_SECONDS = 30  # Only 30 seconds minimum!
                 
-                # Calculate target distance
-                if entry_price > 0:
-                    target_distance_pct = abs(take_profit - entry_price) / entry_price * 100
-                    
-                    # Dynamic hold time based on target distance
-                    if target_distance_pct >= 3.0:
-                        MIN_HOLD_TIME = 10  # Big target (3%+) = wait 10 min
-                    elif target_distance_pct >= 1.5:
-                        MIN_HOLD_TIME = 5   # Medium target (1.5-3%) = wait 5 min
-                    else:
-                        MIN_HOLD_TIME = 2   # Small target (<1.5%) = only 2 min!
-                else:
-                    MIN_HOLD_TIME = 5  # Default if error
-                
-                # 🔧 Check minimum hold time
+                # 🔧 Check minimum hold time (very short!)
                 try:
                     if isinstance(position.get('entry_time'), datetime):
-                        hold_time_minutes = (datetime.now() - position['entry_time']).total_seconds() / 60
-                        if hold_time_minutes < MIN_HOLD_TIME:
-                            # Too early! Skip this position
+                        hold_time_seconds = (datetime.now() - position['entry_time']).total_seconds()
+                        if hold_time_seconds < MIN_HOLD_TIME_SECONDS:
+                            # Too early! Wait at least 30 seconds
                             continue
                 except:
                     pass  # If error, proceed
@@ -2157,53 +2142,30 @@ class UltimateHybridBot:
                 else:
                     current_gain_pct = ((position['entry_price'] - current_price) / position['entry_price']) * 100
                 
-                # 🚀 SMART FEE-COVERED EXIT LOGIC (NEW!)
-                # Exit small profits if fees are covered + low confidence!
+                # 🔥🔥🔥 ULTRA-AGGRESSIVE EXIT FOR LOW CAPITAL! 🔥🔥🔥
+                # User wants: Fee covered + ANY profit = EXIT IMMEDIATELY!
+                # NO waiting for confidence drop - just grab profit FAST!
+                
                 TOTAL_FEES_PCT = 0.19  # Entry + Exit fees
                 net_profit_pct = current_gain_pct - TOTAL_FEES_PCT
                 
-                # Quick profit lock conditions (fees covered!)
-                if net_profit_pct >= 0.3:  # At least $3 net profit
-                    # Get confidence for this position
-                    confidence, details = self.calculate_target_confidence(
-                        symbol, 
-                        current_price, 
-                        position['entry_price'],
-                        position['take_profit'],
-                        position['action']
-                    )
-                    position['target_confidence'] = confidence
-                    
-                    # Lock small profits if confidence drops!
-                    if net_profit_pct >= 0.3 and net_profit_pct < 0.7:
-                        # Tiny profit: Lock if confidence < 55%
-                        if confidence < 55:
-                            reason = f"Fee-Covered Lock ({confidence}% conf, +{net_profit_pct:.2f}% net)"
-                            logger.info(f"💰 FEE-COVERED EXIT: {symbol} | Net: +{net_profit_pct:.2f}% | Conf: {confidence}%")
-                            positions_to_close.append((position_key, current_price, reason))
-                            continue
-                    
-                    elif net_profit_pct >= 0.7 and net_profit_pct < 1.2:
-                        # Small profit: Lock if confidence < 60%
-                        if confidence < 60:
-                            reason = f"Smart Quick Lock ({confidence}% conf, +{net_profit_pct:.2f}% net)"
-                            logger.info(f"💰 QUICK PROFIT: {symbol} | Net: +{net_profit_pct:.2f}% | Conf: {confidence}%")
-                            positions_to_close.append((position_key, current_price, reason))
-                            continue
+                # 💰 LOW CAPITAL STRATEGY: Exit on TINY profits!
+                if net_profit_pct >= 0.15:  # Lowered from 0.3% to 0.15%!
+                    # ANY profit after fees = INSTANT EXIT (no confidence check!)
+                    reason = f"Low-Cap Quick Exit (+{net_profit_pct:.2f}% net profit)"
+                    logger.info(f"💰💰 INSTANT EXIT: {symbol} | Net Profit: +{net_profit_pct:.2f}% | LOCKED!")
+                    positions_to_close.append((position_key, current_price, reason))
+                    continue  # Exit NOW!
                 
-                # 🎯 STRATEGY-SPECIFIC MINIMUM PROFITS
-                STRATEGY_MIN_PROFITS = {
-                    'SCALPING': 0.8,
-                    'DAY_TRADING': 1.0,
-                    'SWING_TRADING': 1.5,
-                    'RANGE_TRADING': 1.0,
-                    'MOMENTUM': 1.2,
-                    'POSITION_TRADING': 2.0
-                }
-                min_profit_for_strategy = STRATEGY_MIN_PROFITS.get(strategy_name, 0.8)
+                # 🔥 LOW CAPITAL MODE: No strategy-specific minimums!
+                # The 0.15% check above already handles exits
+                # This section is for BIGGER profits (> 0.5%) where we check confidence
                 
-                # Only consider early exit if above minimum threshold
-                if current_gain_pct >= min_profit_for_strategy:
+                # If we reach here, profit is < 0.15% (fees not covered yet)
+                # OR position might have bigger profit and we should check confidence
+                
+                # For profits above 0.5%, we can still check confidence for optimization
+                if current_gain_pct >= 0.5:
                     confidence, details = self.calculate_target_confidence(
                         symbol, 
                         current_price, 
