@@ -328,6 +328,14 @@ performance_analytics = PerformanceAnalytics()
 # STRATEGY DEFINITIONS
 # ============================================================================
 
+# ============================================================================
+# 🎯 STRATEGY SPEED CLASSIFICATION (For Ultra-Aggressive Mode)
+# ============================================================================
+# ULTRA_FAST: < 2 hours hold time (best for low capital)
+# FAST: 2-8 hours hold time (good for medium capital)
+# MEDIUM: 1-3 days hold time (good for high capital)
+# SLOW: > 3 days hold time (only for large capital)
+
 STRATEGIES = {
     'SCALPING': {
         'timeframe': '1m',
@@ -335,7 +343,9 @@ STRATEGIES = {
         'capital_pct': 0.10,  # 10% ✅ REDUCED (was 15%)
         'stop_loss': 0.005,  # 0.5% ✅ TIGHT (was 0.8%)
         'take_profit': 0.020,  # 2.0% ✅ 1:4 R/R (was 1.2%)
-        'max_positions': 2
+        'max_positions': 2,
+        'speed_class': 'ULTRA_FAST',  # ⚡ Best for ultra-aggressive!
+        'min_capital': 100  # Minimum capital to use this strategy
     },
     'DAY_TRADING': {
         'timeframe': '5m',
@@ -343,7 +353,9 @@ STRATEGIES = {
         'capital_pct': 0.12,  # 12% ✅ REDUCED (was 20%)
         'stop_loss': 0.008,  # 0.8% ✅ TIGHT (was 1.5%)
         'take_profit': 0.032,  # 3.2% ✅ 1:4 R/R (was 2.5%)
-        'max_positions': 2
+        'max_positions': 2,
+        'speed_class': 'FAST',  # ⚡ Good for low-medium capital
+        'min_capital': 200
     },
     'SWING_TRADING': {
         'timeframe': '1h',
@@ -351,7 +363,9 @@ STRATEGIES = {
         'capital_pct': 0.15,  # 15% ✅ REDUCED (was 25%)
         'stop_loss': 0.012,  # 1.2% ✅ TIGHT (was 2.5%)
         'take_profit': 0.048,  # 4.8% ✅ 1:4 R/R (was 6%)
-        'max_positions': 2
+        'max_positions': 2,
+        'speed_class': 'MEDIUM',  # 🐢 Slow - not for ultra-aggressive!
+        'min_capital': 2000  # Need higher capital for days-long holds
     },
     'RANGE_TRADING': {
         'timeframe': '15m',
@@ -359,7 +373,9 @@ STRATEGIES = {
         'capital_pct': 0.10,  # 10% ✅ REDUCED (was 15%)
         'stop_loss': 0.006,  # 0.6% ✅ TIGHT (was 1.2%)
         'take_profit': 0.024,  # 2.4% ✅ 1:4 R/R (was 2%)
-        'max_positions': 2
+        'max_positions': 2,
+        'speed_class': 'ULTRA_FAST',  # ⚡ Perfect for ultra-aggressive!
+        'min_capital': 100
     },
     'MOMENTUM': {
         'timeframe': '5m',
@@ -367,7 +383,9 @@ STRATEGIES = {
         'capital_pct': 0.12,  # 12% ✅ REDUCED (was 15%)
         'stop_loss': 0.010,  # 1.0% ✅ TIGHT (was 2%)
         'take_profit': 0.040,  # 4.0% ✅ 1:4 R/R (same)
-        'max_positions': 1
+        'max_positions': 1,
+        'speed_class': 'FAST',  # ⚡ Good for medium capital
+        'min_capital': 300
     },
     'POSITION_TRADING': {
         'timeframe': '4h',
@@ -375,7 +393,9 @@ STRATEGIES = {
         'capital_pct': 0.08,  # 8% ✅ REDUCED (was 10%)
         'stop_loss': 0.020,  # 2.0% ✅ TIGHT (was 4%)
         'take_profit': 0.080,  # 8.0% ✅ 1:4 R/R (was 12%)
-        'max_positions': 1
+        'max_positions': 1,
+        'speed_class': 'SLOW',  # 🐢 Very slow - AVOID for ultra-aggressive!
+        'min_capital': 5000  # Need large capital for weeks-long holds
     },
     'GRID_TRADING': {
         'timeframe': '15m',
@@ -384,6 +404,8 @@ STRATEGIES = {
         'stop_loss': 0.008,  # 0.8% tight
         'take_profit': 0.012,  # 1.2% (multiple small profits add up!)
         'max_positions': 3,  # Can have multiple grid positions
+        'speed_class': 'ULTRA_FAST',  # ⚡ Excellent for ultra-aggressive!
+        'min_capital': 150,  # Need a bit more for grid levels
         'grid_levels': 5,  # Number of grid levels
         'grid_spacing': 0.005  # 0.5% spacing between grid levels
     }
@@ -591,6 +613,80 @@ class UltimateHybridBot:
         logger.info(f"🔑 API Keys: {len(self.api_keys)} (Rotation Enabled)")
         logger.info(f"✅ Multi-Strategy | Multi-Timeframe | Multi-Coin")
         
+    # ========================================================================
+    # 🎯 INTELLIGENT STRATEGY SELECTION (Capital-Based)
+    # ========================================================================
+    
+    def get_suitable_strategies(self):
+        """
+        🔥 INTELLIGENT STRATEGY SELECTOR 🔥
+        Filters strategies based on current capital to maximize profitability!
+        
+        Logic:
+        - Ultra-Low Capital (<$1000): ULTRA_FAST only (SCALPING, RANGE_TRADING, GRID_TRADING)
+        - Low Capital ($1000-$3000): ULTRA_FAST + FAST (adds DAY_TRADING, MOMENTUM)
+        - Medium Capital ($3000-$10000): ULTRA_FAST + FAST + MEDIUM (adds SWING_TRADING)
+        - High Capital (>$10000): ALL strategies (adds POSITION_TRADING)
+        
+        Why? Low capital needs QUICK turnover to compound fast!
+        High capital can afford to wait days/weeks for bigger moves.
+        """
+        total_equity = self.current_capital + self.reserved_capital
+        
+        suitable = []
+        
+        # Define capital thresholds
+        ULTRA_LOW_CAPITAL = 1000
+        LOW_CAPITAL = 3000
+        MEDIUM_CAPITAL = 10000
+        
+        for strategy_name, strategy_config in STRATEGIES.items():
+            speed_class = strategy_config.get('speed_class', 'MEDIUM')
+            min_capital = strategy_config.get('min_capital', 0)
+            
+            # Check if we have enough capital for this strategy
+            if total_equity < min_capital:
+                continue
+            
+            # Filter by speed class based on total equity
+            if total_equity < ULTRA_LOW_CAPITAL:
+                # ULTRA-AGGRESSIVE MODE: Only super-fast strategies!
+                if speed_class == 'ULTRA_FAST':
+                    suitable.append(strategy_name)
+            elif total_equity < LOW_CAPITAL:
+                # LOW CAPITAL: Ultra-fast + fast strategies
+                if speed_class in ['ULTRA_FAST', 'FAST']:
+                    suitable.append(strategy_name)
+            elif total_equity < MEDIUM_CAPITAL:
+                # MEDIUM CAPITAL: All except very slow
+                if speed_class in ['ULTRA_FAST', 'FAST', 'MEDIUM']:
+                    suitable.append(strategy_name)
+            else:
+                # HIGH CAPITAL: All strategies available
+                suitable.append(strategy_name)
+        
+        # Log strategy selection
+        if total_equity < ULTRA_LOW_CAPITAL:
+            mode = "⚡ ULTRA-AGGRESSIVE MODE"
+            desc = "Lightning-fast strategies only!"
+        elif total_equity < LOW_CAPITAL:
+            mode = "⚡ LOW CAPITAL MODE"
+            desc = "Fast strategies for quick compounding"
+        elif total_equity < MEDIUM_CAPITAL:
+            mode = "📊 BALANCED MODE"
+            desc = "Mix of fast and medium strategies"
+        else:
+            mode = "💰 HIGH CAPITAL MODE"
+            desc = "All strategies enabled"
+        
+        logger.info(f"\n{'='*70}")
+        logger.info(f"🎯 STRATEGY SELECTION: {mode}")
+        logger.info(f"   Capital: ${total_equity:.2f} | {desc}")
+        logger.info(f"   Active Strategies ({len(suitable)}): {', '.join(suitable)}")
+        logger.info(f"{'='*70}\n")
+        
+        return suitable
+    
     # ========================================================================
     # API KEY ROTATION SYSTEM
     # ========================================================================
@@ -2373,24 +2469,38 @@ class UltimateHybridBot:
             logger.info(f"🎯 GENERATING SIGNALS...")
             logger.info(f"{'='*70}")
             
+            # 🎯 INTELLIGENT STRATEGY SELECTION (Capital-Based!)
+            # Get suitable strategies ONCE per cycle (more efficient!)
+            suitable_strategy_names = self.get_suitable_strategies()
+            
+            # Map strategy names to their signal functions
+            strategy_map = {
+                'SCALPING': self.generate_scalping_signal,
+                'DAY_TRADING': self.generate_day_trading_signal,
+                'SWING_TRADING': self.generate_swing_trading_signal,
+                'RANGE_TRADING': self.generate_range_trading_signal,
+                'MOMENTUM': self.generate_momentum_signal,
+                'POSITION_TRADING': self.generate_position_trading_signal,
+                'GRID_TRADING': self.generate_grid_trading_signal
+            }
+            
+            # Build strategies_to_try with only suitable ones
+            strategies_to_try = [
+                (name, strategy_map[name]) 
+                for name in suitable_strategy_names 
+                if name in strategy_map
+            ]
+            
+            if not strategies_to_try:
+                logger.warning(f"⚠️ No suitable strategies for ${self.current_capital:.2f} capital!")
+                self.print_status()
+                return
+            
             for symbol, score, _ in opportunities[:8]:  # Top 8 coins
                 if symbol not in self.market_data:
                     continue
                 
                 data = self.market_data[symbol]
-                
-                # 🎯 OPTIMIZATION: Collect ALL signals, pick BEST (not first!)
-                # Old: Takes first signal → Misses better opportunities
-                # New: Evaluates all, picks highest score → 20% better trades
-                strategies_to_try = [
-                    ('SCALPING', self.generate_scalping_signal),
-                    ('DAY_TRADING', self.generate_day_trading_signal),
-                    ('SWING_TRADING', self.generate_swing_trading_signal),
-                    ('RANGE_TRADING', self.generate_range_trading_signal),
-                    ('MOMENTUM', self.generate_momentum_signal),
-                    ('POSITION_TRADING', self.generate_position_trading_signal),
-                    ('GRID_TRADING', self.generate_grid_trading_signal)  # 🆕 7th strategy!
-                ]
                 
                 # Collect all valid signals with scores
                 all_signals = []
@@ -2567,6 +2677,8 @@ def get_stats():
             'strategy_stats': dict(trading_bot.strategy_stats),
             # 🆕 NEW STATS
             'total_strategies': len(STRATEGIES),
+            'active_strategies': len(trading_bot.get_suitable_strategies()),  # 🎯 Active strategies count
+            'active_strategy_names': trading_bot.get_suitable_strategies(),  # 🎯 Active strategy list
             'total_coins': len(COIN_UNIVERSE),
             'api_keys_count': len(trading_bot.api_keys),
             'market_regime': trading_bot.current_market_regime,
@@ -3330,7 +3442,8 @@ def dashboard():
                     ">
                         <div style="text-align: center;">
                             <div style="font-size: 0.9em; opacity: 0.8;">📊 Strategies</div>
-                            <div id="system-strategies" style="font-size: 1.5em; font-weight: bold; color: #4ade80;">7</div>
+                            <div id="system-strategies" style="font-size: 1.5em; font-weight: bold; color: #4ade80;">3/7</div>
+                            <div id="strategy-mode" style="font-size: 0.75em; opacity: 0.7; color: #fbbf24;">⚡ ULTRA-AGGRESSIVE</div>
                         </div>
                         <div style="text-align: center;">
                             <div style="font-size: 0.9em; opacity: 0.8;">🪙 Coins</div>
@@ -3660,7 +3773,26 @@ def dashboard():
                         document.getElementById('open-positions').textContent = data.open_positions;
                         
                         // 🆕 UPDATE SYSTEM INFO
-                        if (data.total_strategies) document.getElementById('system-strategies').textContent = data.total_strategies;
+                        // 🎯 UPDATE STRATEGY COUNT (Active/Total) + Mode
+                        if (data.active_strategies !== undefined && data.total_strategies) {
+                            document.getElementById('system-strategies').textContent = `${data.active_strategies}/${data.total_strategies}`;
+                            
+                            // Determine mode based on active strategies and total equity
+                            const modeEl = document.getElementById('strategy-mode');
+                            if (data.total_equity < 1000) {
+                                modeEl.textContent = '⚡ ULTRA-AGGRESSIVE';
+                                modeEl.style.color = '#fbbf24';
+                            } else if (data.total_equity < 3000) {
+                                modeEl.textContent = '⚡ LOW CAPITAL';
+                                modeEl.style.color = '#60a5fa';
+                            } else if (data.total_equity < 10000) {
+                                modeEl.textContent = '📊 BALANCED';
+                                modeEl.style.color = '#a78bfa';
+                            } else {
+                                modeEl.textContent = '💰 HIGH CAPITAL';
+                                modeEl.style.color = '#4ade80';
+                            }
+                        }
                         if (data.total_coins) document.getElementById('system-coins').textContent = data.total_coins;
                         if (data.api_keys_count) document.getElementById('system-apis').textContent = data.api_keys_count;
                         if (data.scan_frequency) document.getElementById('system-scan').textContent = data.scan_frequency;
