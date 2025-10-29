@@ -223,39 +223,39 @@ class PerformanceAnalytics:
         
         criteria = {
             'days_tested': {
-                'value': days_running,
+                'value': int(days_running),
                 'required': 14,
-                'passed': days_running >= 14,
+                'passed': bool(days_running >= 14),
                 'weight': 20
             },
             'win_rate': {
-                'value': win_rate,
+                'value': float(win_rate),
                 'required': 55,
-                'passed': win_rate >= 55,
+                'passed': bool(win_rate >= 55),
                 'weight': 25
             },
             'total_pnl': {
-                'value': total_pnl,
+                'value': float(total_pnl),
                 'required': 0,
-                'passed': total_pnl > 0,
+                'passed': bool(total_pnl > 0),
                 'weight': 20
             },
             'max_drawdown': {
-                'value': self.max_drawdown,
+                'value': float(self.max_drawdown),
                 'required': 10,
-                'passed': self.max_drawdown < 10,
+                'passed': bool(self.max_drawdown < 10),
                 'weight': 15
             },
             'consistency': {
-                'value': self.get_consistency_score(),
+                'value': float(self.get_consistency_score()),
                 'required': 60,
-                'passed': self.get_consistency_score() >= 60,
+                'passed': bool(self.get_consistency_score() >= 60),
                 'weight': 10
             },
             'total_trades': {
-                'value': total_trades,
+                'value': int(total_trades),
                 'required': 30,
-                'passed': total_trades >= 30,
+                'passed': bool(total_trades >= 30),
                 'weight': 10
             }
         }
@@ -263,15 +263,15 @@ class PerformanceAnalytics:
         # Calculate overall score
         total_weight = sum(c['weight'] for c in criteria.values())
         achieved_weight = sum(c['weight'] for c in criteria.values() if c['passed'])
-        overall_score = (achieved_weight / total_weight * 100) if total_weight > 0 else 0
+        overall_score = float((achieved_weight / total_weight * 100) if total_weight > 0 else 0)
         
         all_passed = all(c['passed'] for c in criteria.values())
         
         return {
-            'ready': all_passed,
+            'ready': bool(all_passed),
             'score': overall_score,
             'criteria': criteria,
-            'missing': [k for k, v in criteria.items() if not v['passed']]
+            'missing': [str(k) for k, v in criteria.items() if not v['passed']]
         }
 
 # Global analytics instance
@@ -1810,48 +1810,72 @@ def get_analytics():
     if not trading_bot:
         return jsonify({'error': 'Bot not initialized'})
     
-    wins = sum(1 for t in trading_bot.trades if t.get('pnl', 0) > 0)
-    total_trades = len([t for t in trading_bot.trades if 'pnl' in t])
-    win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
-    total_pnl = trading_bot.current_capital + trading_bot.reserved_capital - trading_bot.initial_capital
-    
-    # Update analytics
-    performance_analytics.update_drawdown(trading_bot.current_capital + trading_bot.reserved_capital)
-    
-    # Get live ready status
-    live_ready = performance_analytics.is_live_ready(total_trades, win_rate, total_pnl)
-    
-    # Get streak info
-    streak_info = performance_analytics.get_win_streak()
-    
-    # Get market distribution
-    market_dist = performance_analytics.get_market_distribution()
-    
-    # Daily performance
-    daily_perf = []
-    for date, stats in sorted(performance_analytics.daily_stats.items()):
-        daily_perf.append({
-            'date': date,
-            'trades': stats['trades'],
-            'wins': stats['wins'],
-            'losses': stats['losses'],
-            'pnl': stats['pnl'],
-            'capital': stats['capital'],
-            'win_rate': (stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0
-        })
-    
-    return jsonify({
-        'max_drawdown': performance_analytics.max_drawdown,
-        'current_drawdown': performance_analytics.current_drawdown,
-        'peak_capital': performance_analytics.peak_capital,
-        'consistency_score': performance_analytics.get_consistency_score(),
-        'days_running': (datetime.now() - performance_analytics.start_date).days,
-        'live_ready': live_ready,
-        'streak': streak_info,
-        'market_distribution': market_dist,
-        'daily_performance': daily_perf,
-        'current_market_condition': performance_analytics.market_conditions[-1] if performance_analytics.market_conditions else None
-    })
+    try:
+        wins = sum(1 for t in trading_bot.trades if t.get('pnl', 0) > 0)
+        total_trades = len([t for t in trading_bot.trades if 'pnl' in t])
+        win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+        total_pnl = trading_bot.current_capital + trading_bot.reserved_capital - trading_bot.initial_capital
+        
+        # Update analytics
+        performance_analytics.update_drawdown(trading_bot.current_capital + trading_bot.reserved_capital)
+        
+        # Get live ready status
+        live_ready = performance_analytics.is_live_ready(total_trades, win_rate, total_pnl)
+        
+        # Get streak info
+        streak_info = performance_analytics.get_win_streak()
+        
+        # Get market distribution
+        market_dist = performance_analytics.get_market_distribution()
+        
+        # Daily performance
+        daily_perf = []
+        for date, stats in sorted(performance_analytics.daily_stats.items()):
+            daily_perf.append({
+                'date': str(date),
+                'trades': int(stats['trades']),
+                'wins': int(stats['wins']),
+                'losses': int(stats['losses']),
+                'pnl': float(stats['pnl']),
+                'capital': float(stats['capital']),
+                'win_rate': float((stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0)
+            })
+        
+        # Ensure all values are JSON-serializable
+        response_data = {
+            'max_drawdown': float(performance_analytics.max_drawdown),
+            'current_drawdown': float(performance_analytics.current_drawdown),
+            'peak_capital': float(performance_analytics.peak_capital),
+            'consistency_score': float(performance_analytics.get_consistency_score()),
+            'days_running': int((datetime.now() - performance_analytics.start_date).days),
+            'live_ready': {
+                'ready': bool(live_ready.get('ready', False)),
+                'score': float(live_ready.get('score', 0)),
+                'criteria': {
+                    k: {
+                        'value': float(v['value']) if isinstance(v['value'], (int, float)) else v['value'],
+                        'required': int(v['required']),
+                        'passed': bool(v['passed']),
+                        'weight': int(v['weight'])
+                    } for k, v in live_ready.get('criteria', {}).items()
+                },
+                'missing': [str(x) for x in live_ready.get('missing', [])]
+            },
+            'streak': {
+                'current': int(streak_info.get('current', 0)),
+                'type': str(streak_info.get('type', 'none')),
+                'longest_win': int(streak_info.get('longest_win', 0)),
+                'longest_loss': int(streak_info.get('longest_loss', 0))
+            },
+            'market_distribution': {str(k): float(v) for k, v in market_dist.items()},
+            'daily_performance': daily_perf,
+            'current_market_condition': performance_analytics.market_conditions[-1] if performance_analytics.market_conditions else None
+        }
+        
+        return jsonify(response_data)
+    except Exception as e:
+        logger.error(f"Error in /api/analytics: {e}", exc_info=True)
+        return jsonify({'error': f'Analytics error: {str(e)}'}), 500
 
 @app.route('/api/validation')
 def get_validation():
@@ -2645,6 +2669,26 @@ def dashboard():
                     .catch(err => console.error('Error fetching stats:', err));
             }
             
+            // Smart price formatting for different coin types
+            function formatPrice(price) {
+                if (price === 0 || price === null || price === undefined) {
+                    return '$0.00';
+                }
+                
+                // For very small prices (< $0.01) - use more decimals
+                if (price < 0.01) {
+                    return '$' + price.toFixed(8).replace(/\.?0+$/, ''); // Remove trailing zeros
+                }
+                // For small prices (< $1) - use 4 decimals
+                else if (price < 1) {
+                    return '$' + price.toFixed(4);
+                }
+                // For normal prices - use 2 decimals
+                else {
+                    return '$' + price.toFixed(2);
+                }
+            }
+            
             function updatePositions() {
                 fetch('/api/positions')
                     .then(r => r.json())
@@ -2684,11 +2728,11 @@ def dashboard():
                                 <div class="position-details">
                                     <div class="detail-item">
                                         <div class="detail-label">Entry Price</div>
-                                        <div class="detail-value">$${pos.entry_price.toFixed(2)}</div>
+                                        <div class="detail-value">${formatPrice(pos.entry_price)}</div>
                                     </div>
                                     <div class="detail-item">
                                         <div class="detail-label">Current Price</div>
-                                        <div class="detail-value">$${pos.current_price.toFixed(2)}</div>
+                                        <div class="detail-value">${formatPrice(pos.current_price)}</div>
                                     </div>
                                     <div class="detail-item">
                                         <div class="detail-label">Quantity</div>
@@ -2700,11 +2744,11 @@ def dashboard():
                                     </div>
                                     <div class="detail-item">
                                         <div class="detail-label">Stop Loss</div>
-                                        <div class="detail-value negative">$${pos.stop_loss.toFixed(2)}</div>
+                                        <div class="detail-value negative">${formatPrice(pos.stop_loss)}</div>
                                     </div>
                                     <div class="detail-item">
                                         <div class="detail-label">Take Profit</div>
-                                        <div class="detail-value positive">$${pos.take_profit.toFixed(2)}</div>
+                                        <div class="detail-value positive">${formatPrice(pos.take_profit)}</div>
                                     </div>
                                 </div>
                             `;
@@ -2854,11 +2898,11 @@ def dashboard():
                                 <div class="position-details">
                                     <div class="detail-item">
                                         <div class="detail-label">Entry Price</div>
-                                        <div class="detail-value">$${trade.entry_price.toFixed(2)}</div>
+                                        <div class="detail-value">${formatPrice(trade.entry_price)}</div>
                                     </div>
                                     <div class="detail-item">
                                         <div class="detail-label">Exit Price</div>
-                                        <div class="detail-value">$${trade.exit_price.toFixed(2)}</div>
+                                        <div class="detail-value">${formatPrice(trade.exit_price)}</div>
                                     </div>
                                     <div class="detail-item">
                                         <div class="detail-label">Quantity</div>
@@ -2878,11 +2922,11 @@ def dashboard():
                                     </div>
                                     <div class="detail-item">
                                         <div class="detail-label">Stop Loss</div>
-                                        <div class="detail-value negative">$${trade.stop_loss.toFixed(2)}</div>
+                                        <div class="detail-value negative">${formatPrice(trade.stop_loss)}</div>
                                     </div>
                                     <div class="detail-item">
                                         <div class="detail-label">Take Profit</div>
-                                        <div class="detail-value positive">$${trade.take_profit.toFixed(2)}</div>
+                                        <div class="detail-value positive">${formatPrice(trade.take_profit)}</div>
                                     </div>
                                     <div class="detail-item">
                                         <div class="detail-label">Confidence</div>
