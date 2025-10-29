@@ -39,7 +39,8 @@ def range_trading_strategy(data: pd.DataFrame, params: Dict) -> pd.Series:
         
         # Volume confirmation
         data['vol_ma'] = data['volume'].rolling(window=20).mean()
-        data['vol_ratio'] = data['volume'] / data['vol_ma']
+        # 🔥 BUG FIX: Safe division - avoid division by zero!
+        data['vol_ratio'] = np.where(data['vol_ma'] > 0, data['volume'] / data['vol_ma'], 1.0)
         
         # Range validation (avoid trending markets)
         data['range_stability'] = data['range_size'].rolling(window=10).std()

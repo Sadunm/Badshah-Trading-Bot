@@ -92,8 +92,16 @@ class PerformanceTracker:
         trades = self.load_trades()
         
         # Filter today's trades
+        # 🔥 BUG FIX: Safe datetime parsing with try-except!
         today = datetime.now().date()
-        today_trades = [t for t in trades if datetime.fromisoformat(t['timestamp']).date() == today]
+        today_trades = []
+        for t in trades:
+            try:
+                trade_date = datetime.fromisoformat(t['timestamp']).date()
+                if trade_date == today:
+                    today_trades.append(t)
+            except (ValueError, KeyError):
+                continue  # Skip trades with invalid timestamps
         
         # Calculate metrics
         metrics = self.calculate_metrics(today_trades)
@@ -172,9 +180,17 @@ Report generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         trades = self.load_trades()
         
         # Filter this week's trades
+        # 🔥 BUG FIX: Safe datetime parsing with try-except!
         today = datetime.now().date()
         week_start = today - timedelta(days=today.weekday())
-        week_trades = [t for t in trades if datetime.fromisoformat(t['timestamp']).date() >= week_start]
+        week_trades = []
+        for t in trades:
+            try:
+                trade_date = datetime.fromisoformat(t['timestamp']).date()
+                if trade_date >= week_start:
+                    week_trades.append(t)
+            except (ValueError, KeyError):
+                continue  # Skip trades with invalid timestamps
         
         metrics = self.calculate_metrics(week_trades)
         

@@ -37,8 +37,12 @@ def load_config(config_file="config/adaptive_config.json"):
     if not os.path.exists(config_file):
         raise FileNotFoundError(f"Configuration file not found: {config_file}")
     
-    with open(config_file, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    # 🔥 BUG FIX: Handle malformed JSON with try-except!
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Malformed JSON in {config_file}: {e}")
 
 def initialize_system(config):
     """Initialize the trading system"""
@@ -81,14 +85,19 @@ def run_paper_trading(config, track_performance=True):
         return False
     
     # Initialize backtester
+    # 🔥 BUG FIX: Safe nested dict access with get() and defaults!
+    trading_settings = config.get('system_config', {}).get('trading_settings', {})
+    fee_rate = trading_settings.get('fee_rate', 0.0005)
+    slippage_rate = trading_settings.get('slippage_rate', 0.0002)
+    initial_capital = trading_settings.get('initial_capital', 10000)
+    
     backtester = UltimateBacktester(
-        fee_rate=config['system_config']['trading_settings']['fee_rate'],
-        slippage_rate=config['system_config']['trading_settings']['slippage_rate']
+        fee_rate=fee_rate,
+        slippage_rate=slippage_rate
     )
     
     # Process each selected strategy
     results = []
-    initial_capital = config['system_config']['trading_settings']['initial_capital']
     
     for candidate in config['strategies']:
         symbol = candidate['symbol']

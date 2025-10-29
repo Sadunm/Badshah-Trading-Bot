@@ -42,7 +42,8 @@ def momentum_strategy(data: pd.DataFrame, params: Dict) -> pd.Series:
         
         # Volume indicators
         data['vol_ma'] = data['volume'].rolling(window=20).mean()
-        data['vol_ratio'] = data['volume'] / data['vol_ma']
+        # 🔥 BUG FIX: Safe division - avoid division by zero!
+        data['vol_ratio'] = np.where(data['vol_ma'] > 0, data['volume'] / data['vol_ma'], 1.0)
         
         # Momentum indicators
         data['momentum'] = data['close'] / data['close'].shift(5) - 1

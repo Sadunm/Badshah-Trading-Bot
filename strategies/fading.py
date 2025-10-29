@@ -42,7 +42,8 @@ def fading_strategy(data: pd.DataFrame, params: Dict) -> pd.Series:
         
         # Volume analysis
         data['vol_ma'] = data['volume'].rolling(window=20).mean()
-        data['vol_ratio'] = data['volume'] / data['vol_ma']
+        # 🔥 BUG FIX: Safe division - avoid division by zero!
+        data['vol_ratio'] = np.where(data['vol_ma'] > 0, data['volume'] / data['vol_ma'], 1.0)
         
         # Price direction
         data['price_change'] = data['close'] - data['close'].shift(1)
