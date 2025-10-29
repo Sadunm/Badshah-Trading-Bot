@@ -552,6 +552,11 @@ class UltimateHybridBot:
         self.daily_trade_count = 0
         self.last_trade_date = datetime.now().date()
         
+        # 🚫 SYMBOL PERFORMANCE TRACKING & BLACKLIST
+        self.symbol_performance = {}  # {symbol: {'wins': 0, 'losses': 0, 'total_pnl': 0, 'trades': 0}}
+        self.symbol_blacklist = set()  # Symbols to avoid
+        self.blacklist_cooldown = {}  # {symbol: cooldown_until_datetime}
+        
         # Capital management
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
@@ -617,19 +622,23 @@ class UltimateHybridBot:
     # 🎯 INTELLIGENT STRATEGY SELECTION (Capital-Based)
     # ========================================================================
     
-    def get_suitable_strategies(self):
+    def get_suitable_strategies(self, market_volatility='MEDIUM'):
         """
         🔥 INTELLIGENT STRATEGY SELECTOR 🔥
-        Filters strategies based on current capital to maximize profitability!
+        Filters strategies based on:
+        1. Current capital (fast strategies for low capital)
+        2. Market volatility (scalping for high vol, range for low vol)
         
-        Logic:
-        - Ultra-Low Capital (<$1000): ULTRA_FAST only (SCALPING, RANGE_TRADING, GRID_TRADING)
-        - Low Capital ($1000-$3000): ULTRA_FAST + FAST (adds DAY_TRADING, MOMENTUM)
-        - Medium Capital ($3000-$10000): ULTRA_FAST + FAST + MEDIUM (adds SWING_TRADING)
-        - High Capital (>$10000): ALL strategies (adds POSITION_TRADING)
+        Capital Logic:
+        - Ultra-Low Capital (<$1000): ULTRA_FAST only
+        - Low Capital ($1000-$3000): ULTRA_FAST + FAST
+        - Medium Capital ($3000-$10000): ULTRA_FAST + FAST + MEDIUM
+        - High Capital (>$10000): ALL strategies
         
-        Why? Low capital needs QUICK turnover to compound fast!
-        High capital can afford to wait days/weeks for bigger moves.
+        Volatility Logic:
+        - HIGH volatility → Favor SCALPING, MOMENTUM (capture quick moves)
+        - MEDIUM volatility → Balanced mix
+        - LOW volatility → Favor RANGE_TRADING, GRID_TRADING (predictable)
         """
         total_equity = self.current_capital + self.reserved_capital
         
@@ -640,6 +649,36 @@ class UltimateHybridBot:
         LOW_CAPITAL = 3000
         MEDIUM_CAPITAL = 10000
         
+        # 🎯 VOLATILITY-BASED STRATEGY PREFERENCES
+        volatility_preferences = {
+            'HIGH': {
+                'SCALPING': 1.5,      # 50% boost for scalping in high vol
+                'MOMENTUM': 1.3,      # 30% boost for momentum
+                'DAY_TRADING': 1.2,   # 20% boost for day trading
+                'RANGE_TRADING': 0.7, # 30% penalty for range (less predictable)
+                'GRID_TRADING': 0.6,  # 40% penalty for grid
+                'SWING_TRADING': 1.0,
+                'POSITION_TRADING': 1.0
+            },
+            'MEDIUM': {
+                # All equal weight
+                'SCALPING': 1.0, 'MOMENTUM': 1.0, 'DAY_TRADING': 1.0,
+                'RANGE_TRADING': 1.0, 'GRID_TRADING': 1.0,
+                'SWING_TRADING': 1.0, 'POSITION_TRADING': 1.0
+            },
+            'LOW': {
+                'RANGE_TRADING': 1.5,  # 50% boost for range in low vol
+                'GRID_TRADING': 1.4,   # 40% boost for grid
+                'SCALPING': 0.7,       # 30% penalty (less opportunity)
+                'MOMENTUM': 0.6,       # 40% penalty (no momentum)
+                'DAY_TRADING': 1.0,
+                'SWING_TRADING': 1.0,
+                'POSITION_TRADING': 1.0
+            }
+        }
+        
+        strategy_scores = {}  # Track scores for logging
+        
         for strategy_name, strategy_config in STRATEGIES.items():
             speed_class = strategy_config.get('speed_class', 'MEDIUM')
             min_capital = strategy_config.get('min_capital', 0)
@@ -649,21 +688,24 @@ class UltimateHybridBot:
                 continue
             
             # Filter by speed class based on total equity
+            capital_suitable = False
             if total_equity < ULTRA_LOW_CAPITAL:
-                # ULTRA-AGGRESSIVE MODE: Only super-fast strategies!
-                if speed_class == 'ULTRA_FAST':
-                    suitable.append(strategy_name)
+                capital_suitable = (speed_class == 'ULTRA_FAST')
             elif total_equity < LOW_CAPITAL:
-                # LOW CAPITAL: Ultra-fast + fast strategies
-                if speed_class in ['ULTRA_FAST', 'FAST']:
-                    suitable.append(strategy_name)
+                capital_suitable = (speed_class in ['ULTRA_FAST', 'FAST'])
             elif total_equity < MEDIUM_CAPITAL:
-                # MEDIUM CAPITAL: All except very slow
-                if speed_class in ['ULTRA_FAST', 'FAST', 'MEDIUM']:
-                    suitable.append(strategy_name)
+                capital_suitable = (speed_class in ['ULTRA_FAST', 'FAST', 'MEDIUM'])
             else:
-                # HIGH CAPITAL: All strategies available
-                suitable.append(strategy_name)
+                capital_suitable = True
+            
+            if capital_suitable:
+                # Apply volatility scoring
+                vol_score = volatility_preferences.get(market_volatility, {}).get(strategy_name, 1.0)
+                strategy_scores[strategy_name] = vol_score
+                
+                # Only include if score >= 0.8 (filter out badly mismatched strategies)
+                if vol_score >= 0.8:
+                    suitable.append(strategy_name)
         
         # Log strategy selection
         if total_equity < ULTRA_LOW_CAPITAL:
@@ -682,10 +724,47 @@ class UltimateHybridBot:
         logger.info(f"\n{'='*70}")
         logger.info(f"🎯 STRATEGY SELECTION: {mode}")
         logger.info(f"   Capital: ${total_equity:.2f} | {desc}")
+        logger.info(f"   Market Volatility: {market_volatility}")
         logger.info(f"   Active Strategies ({len(suitable)}): {', '.join(suitable)}")
+        if strategy_scores:
+            top_strategies = sorted(strategy_scores.items(), key=lambda x: x[1], reverse=True)[:3]
+            logger.info(f"   🔥 Top Strategies: {', '.join([f'{s}({score:.1f}x)' for s, score in top_strategies])}")
         logger.info(f"{'='*70}\n")
         
+        # Store for use in signal generation
+        self.strategy_volatility_scores = strategy_scores
+        
         return suitable
+    
+    def calculate_market_volatility(self):
+        """
+        Calculate current market volatility from recent market data
+        Returns: 'HIGH', 'MEDIUM', or 'LOW'
+        """
+        if not self.market_data:
+            return 'MEDIUM'
+        
+        volatilities = []
+        for symbol, data in list(self.market_data.items())[:20]:  # Sample 20 symbols
+            if 'closes' in data and len(data['closes']) > 20:
+                closes = np.array(data['closes'][-20:])
+                if len(closes) > 1 and np.all(closes > 0):
+                    returns = np.diff(closes) / closes[:-1]
+                    vol = np.std(returns) * 100  # Percentage volatility
+                    volatilities.append(vol)
+        
+        if not volatilities:
+            return 'MEDIUM'
+        
+        avg_volatility = np.mean(volatilities)
+        
+        # Classify volatility
+        if avg_volatility > 3.0:
+            return 'HIGH'
+        elif avg_volatility < 1.5:
+            return 'LOW'
+        else:
+            return 'MEDIUM'
     
     # ========================================================================
     # API KEY ROTATION SYSTEM
@@ -1479,6 +1558,13 @@ class UltimateHybridBot:
                 # Detect market condition
                 market_condition = performance_analytics.detect_market_condition(closes)
                 
+                # 📈 VOLUME SPIKE DETECTION
+                # Detects when volume is significantly higher than average
+                current_volume = volumes[-1] if len(volumes) > 0 else 0
+                avg_volume = np.mean(volumes[-20:]) if len(volumes) >= 20 else current_volume
+                volume_spike_ratio = (current_volume / avg_volume) if avg_volume > 0 else 1.0
+                has_volume_spike = volume_spike_ratio > 2.0  # 2x average = spike!
+                
                 # 🎯 OPTIMIZATION: Store only last 20 candles (need for market_condition detection)
                 # Reduces memory by 80%: 200 candles → 20 candles
                 import time
@@ -1487,10 +1573,13 @@ class UltimateHybridBot:
                     'closes': closes[-20:],  # Only last 20! (was 200)
                     'highs': highs[-20:],     # Only last 20!
                     'lows': lows[-20:],       # Only last 20!
+                    'volumes': volumes[-20:],  # Store volumes for strategies
                     'indicators': indicators,
                     'sr_levels': sr_levels,
                     'score': score,
                     'market_condition': market_condition,
+                    'volume_spike_ratio': volume_spike_ratio,  # 📈 NEW!
+                    'has_volume_spike': has_volume_spike,  # 📈 NEW!
                     'timestamp': time.time()  # For future cache invalidation
                 }
                 
@@ -1958,6 +2047,35 @@ class UltimateHybridBot:
             # Use smaller of the two
             capital_to_use = min(available_capital, strategy_capital)
             
+            # 📊 VOLATILITY-BASED POSITION SIZING
+            # High volatility = smaller positions (more risk)
+            # Low volatility = normal positions (less risk)
+            volatility_adjustment = 1.0  # Default: no adjustment
+            
+            if symbol in self.market_data:
+                data = self.market_data[symbol]
+                closes = data.get('closes', [])
+                if len(closes) >= 20:
+                    # Calculate recent volatility
+                    closes_array = np.array(closes)
+                    if len(closes_array) > 1 and np.all(closes_array > 0):
+                        returns = np.diff(closes_array) / closes_array[:-1]
+                        volatility = np.std(returns) * 100  # Percentage
+                        
+                        # Adjust position size based on volatility
+                        if volatility > 3.0:
+                            # HIGH volatility: Reduce position size by 30%
+                            volatility_adjustment = 0.7
+                            logger.debug(f"📊 {symbol}: HIGH volatility ({volatility:.2f}%) → 30% smaller position")
+                        elif volatility < 1.5:
+                            # LOW volatility: Increase position size by 20%
+                            volatility_adjustment = 1.2
+                            logger.debug(f"📊 {symbol}: LOW volatility ({volatility:.2f}%) → 20% larger position")
+                        # else: MEDIUM volatility, normal size (1.0x)
+            
+            # Apply volatility adjustment
+            capital_to_use *= volatility_adjustment
+            
             # Position value
             position_value = capital_to_use / strategy['max_positions']
             
@@ -2000,6 +2118,23 @@ class UltimateHybridBot:
                     else:
                         # Cooldown expired, remove it
                         del self.symbol_cooldowns[symbol]
+                
+                # 🚫 CHECK SYMBOL BLACKLIST
+                if symbol in self.symbol_blacklist:
+                    # Check if blacklist cooldown expired
+                    if symbol in self.blacklist_cooldown:
+                        if datetime.now() < self.blacklist_cooldown[symbol]:
+                            remaining_hours = (self.blacklist_cooldown[symbol] - datetime.now()).total_seconds() / 3600
+                            logger.debug(f"🚫 {symbol} BLACKLISTED ({remaining_hours:.1f}h remaining), skipping")
+                            return False
+                        else:
+                            # Cooldown expired, remove from blacklist
+                            self.symbol_blacklist.remove(symbol)
+                            del self.blacklist_cooldown[symbol]
+                            logger.info(f"✅ {symbol} blacklist expired, re-enabled")
+                    else:
+                        logger.debug(f"🚫 {symbol} BLACKLISTED (no cooldown set), skipping")
+                        return False
                 
                 # 🔧 FIX: Check MAX_TOTAL_POSITIONS (most critical!)
                 MAX_TOTAL_POSITIONS = 5  # Never more than 5 positions total!
@@ -2210,6 +2345,36 @@ class UltimateHybridBot:
                 emoji = "🎉" if pnl > 0 else "❌"
                 logger.info(f"{emoji} CLOSED | {symbol} | {strategy_name} | PnL: ${pnl:.2f} ({pnl_pct:+.2f}%) | Hold: {hold_time:.0f}min | {reason}")
                 
+                # 🚫 UPDATE SYMBOL PERFORMANCE TRACKING
+                if symbol not in self.symbol_performance:
+                    self.symbol_performance[symbol] = {'wins': 0, 'losses': 0, 'total_pnl': 0, 'trades': 0}
+                
+                self.symbol_performance[symbol]['trades'] += 1
+                self.symbol_performance[symbol]['total_pnl'] += pnl
+                
+                if pnl > 0:
+                    self.symbol_performance[symbol]['wins'] += 1
+                else:
+                    self.symbol_performance[symbol]['losses'] += 1
+                
+                # Check if symbol should be blacklisted
+                perf = self.symbol_performance[symbol]
+                if perf['trades'] >= 5:  # Need at least 5 trades to judge
+                    win_rate = (perf['wins'] / perf['trades']) * 100
+                    avg_pnl = perf['total_pnl'] / perf['trades']
+                    
+                    # Blacklist criteria: <30% win rate OR average loss > $2
+                    if win_rate < 30 or avg_pnl < -2:
+                        if symbol not in self.symbol_blacklist:
+                            self.symbol_blacklist.add(symbol)
+                            # Blacklist for 24 hours
+                            self.blacklist_cooldown[symbol] = datetime.now() + timedelta(hours=24)
+                            logger.warning(f"🚫 BLACKLISTED: {symbol} | Win Rate: {win_rate:.1f}% | Avg P&L: ${avg_pnl:.2f} | 24h cooldown")
+                    elif win_rate > 60 and symbol in self.symbol_blacklist:
+                        # Remove from blacklist if performance improves
+                        self.symbol_blacklist.remove(symbol)
+                        logger.info(f"✅ REMOVED FROM BLACKLIST: {symbol} | Win Rate improved to {win_rate:.1f}%")
+                
                 # 🎯 ROUND 7 FIX #6: Track consecutive losses
                 if pnl < 0:
                     self.consecutive_losses += 1
@@ -2352,6 +2517,86 @@ class UltimateHybridBot:
                             logger.debug(f"🚀 LETTING IT RUN: {symbol} | Confidence: {confidence}% | Gain: +{current_gain_pct:.2f}% → TARGET!")
                 
                 # ==================================================================
+                # 🎯 BREAK-EVEN STOP-LOSS (Priority #1.4)
+                # ==================================================================
+                # Move stop-loss to entry after fees covered - eliminates risk!
+                
+                BREAKEVEN_ACTIVATION_PCT = 0.3  # Move to break-even after 0.3% profit
+                
+                if current_gain_pct >= BREAKEVEN_ACTIVATION_PCT:
+                    if not position.get('breakeven_activated', False):
+                        # Calculate break-even price (entry + fees)
+                        TOTAL_FEES_PCT = 0.19
+                        if position['action'] == 'BUY':
+                            breakeven_price = position['entry_price'] * (1 + TOTAL_FEES_PCT / 100)
+                            # Only move SL up, never down
+                            if breakeven_price > position['stop_loss']:
+                                position['stop_loss'] = breakeven_price
+                                position['breakeven_activated'] = True
+                                logger.info(f"🎯 BREAK-EVEN ACTIVATED: {symbol} | SL moved to ${breakeven_price:.4f} (entry + fees)")
+                        else:  # SELL
+                            breakeven_price = position['entry_price'] * (1 - TOTAL_FEES_PCT / 100)
+                            # Only move SL down, never up
+                            if breakeven_price < position['stop_loss']:
+                                position['stop_loss'] = breakeven_price
+                                position['breakeven_activated'] = True
+                                logger.info(f"🎯 BREAK-EVEN ACTIVATED: {symbol} | SL moved to ${breakeven_price:.4f} (entry + fees)")
+                
+                # ==================================================================
+                # 🛡️ TRAILING STOP-LOSS SYSTEM (Priority #1.5)
+                # ==================================================================
+                # Protects profits as price moves favorably!
+                # Activates after reaching certain profit level
+                
+                TRAILING_ACTIVATION_PCT = 0.8  # Activate trailing SL after 0.8% profit
+                TRAILING_DISTANCE_PCT = 0.4    # Trail 0.4% below high (protects 0.4% profit min)
+                
+                if current_gain_pct >= TRAILING_ACTIVATION_PCT:
+                    # Initialize trailing stop if not exists
+                    if 'trailing_stop_loss' not in position:
+                        if position['action'] == 'BUY':
+                            # Start trailing from current price
+                            position['trailing_stop_loss'] = current_price * (1 - TRAILING_DISTANCE_PCT / 100)
+                            position['highest_price'] = current_price
+                            logger.info(f"🛡️ TRAILING SL ACTIVATED: {symbol} @ ${current_price:.4f} | Trail: ${position['trailing_stop_loss']:.4f}")
+                        else:  # SELL
+                            position['trailing_stop_loss'] = current_price * (1 + TRAILING_DISTANCE_PCT / 100)
+                            position['lowest_price'] = current_price
+                            logger.info(f"🛡️ TRAILING SL ACTIVATED: {symbol} @ ${current_price:.4f} | Trail: ${position['trailing_stop_loss']:.4f}")
+                    else:
+                        # Update trailing stop if price moves favorably
+                        if position['action'] == 'BUY':
+                            if current_price > position.get('highest_price', position['entry_price']):
+                                position['highest_price'] = current_price
+                                new_trailing_sl = current_price * (1 - TRAILING_DISTANCE_PCT / 100)
+                                if new_trailing_sl > position['trailing_stop_loss']:
+                                    logger.debug(f"🛡️ TRAILING SL UPDATED: {symbol} | ${position['trailing_stop_loss']:.4f} → ${new_trailing_sl:.4f}")
+                                    position['trailing_stop_loss'] = new_trailing_sl
+                        else:  # SELL
+                            if current_price < position.get('lowest_price', position['entry_price']):
+                                position['lowest_price'] = current_price
+                                new_trailing_sl = current_price * (1 + TRAILING_DISTANCE_PCT / 100)
+                                if new_trailing_sl < position['trailing_stop_loss']:
+                                    logger.debug(f"🛡️ TRAILING SL UPDATED: {symbol} | ${position['trailing_stop_loss']:.4f} → ${new_trailing_sl:.4f}")
+                                    position['trailing_stop_loss'] = new_trailing_sl
+                        
+                        # Check if trailing stop hit
+                        if position['action'] == 'BUY':
+                            if current_price <= position['trailing_stop_loss']:
+                                trailing_profit = ((position['highest_price'] - position['entry_price']) / position['entry_price']) * 100
+                                reason = f"Trailing SL (Peak: +{trailing_profit:.2f}%)"
+                                logger.info(f"🛡️ TRAILING SL HIT: {symbol} | Profit Protected: +{trailing_profit:.2f}%")
+                                positions_to_close.append((position_key, current_price, reason))
+                                continue
+                        else:  # SELL
+                            if current_price >= position['trailing_stop_loss']:
+                                trailing_profit = ((position['entry_price'] - position['lowest_price']) / position['entry_price']) * 100
+                                reason = f"Trailing SL (Peak: +{trailing_profit:.2f}%)"
+                                logger.info(f"🛡️ TRAILING SL HIT: {symbol} | Profit Protected: +{trailing_profit:.2f}%")
+                                positions_to_close.append((position_key, current_price, reason))
+                                continue
+                
+                # ==================================================================
                 # TRADITIONAL EXITS (Priority #2)
                 # ==================================================================
                 # Check stop loss
@@ -2469,9 +2714,12 @@ class UltimateHybridBot:
             logger.info(f"🎯 GENERATING SIGNALS...")
             logger.info(f"{'='*70}")
             
-            # 🎯 INTELLIGENT STRATEGY SELECTION (Capital-Based!)
+            # 🎯 CALCULATE MARKET VOLATILITY
+            market_volatility = self.calculate_market_volatility()
+            
+            # 🎯 INTELLIGENT STRATEGY SELECTION (Capital-Based + Volatility-Based!)
             # Get suitable strategies ONCE per cycle (more efficient!)
-            suitable_strategy_names = self.get_suitable_strategies()
+            suitable_strategy_names = self.get_suitable_strategies(market_volatility)
             
             # Map strategy names to their signal functions
             strategy_map = {
