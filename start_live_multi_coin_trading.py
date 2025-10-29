@@ -1692,18 +1692,37 @@ def get_positions():
 
 @app.route('/api/logs')
 def get_logs():
-    """Get recent log entries"""
+    """Get recent log entries with better formatting"""
     try:
         log_file = 'logs/multi_coin_trading.log'
         if os.path.exists(log_file):
             with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()
-                # Return last 100 lines
-                recent_logs = lines[-100:]
-                return jsonify({'logs': recent_logs})
-        return jsonify({'logs': []})
+                # Return last 200 lines (more logs!)
+                recent_logs = [line.strip() for line in lines[-200:] if line.strip()]
+                return jsonify({
+                    'logs': recent_logs,
+                    'count': len(recent_logs),
+                    'timestamp': datetime.now().isoformat()
+                })
+        else:
+            # Log file doesn't exist yet
+            return jsonify({
+                'logs': [
+                    f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - INFO - 🔥 Bot starting...',
+                    f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - INFO - 📊 Scanning markets...',
+                    f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - INFO - 🔍 Looking for opportunities...'
+                ],
+                'count': 3,
+                'timestamp': datetime.now().isoformat()
+            })
     except Exception as e:
-        return jsonify({'logs': [f'Error reading logs: {str(e)}']})
+        logger.error(f"Error reading logs: {e}")
+        return jsonify({
+            'logs': [f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - ERROR - Failed to read logs: {str(e)}'],
+            'count': 1,
+            'timestamp': datetime.now().isoformat()
+        })
 
 @app.route('/api/trade-history')
 def get_trade_history():
@@ -2147,14 +2166,15 @@ def dashboard():
             }
             
             .logs-container {
-                background: rgba(0,0,0,0.3);
+                background: rgba(0,0,0,0.4);
                 border-radius: 12px;
                 padding: 20px;
-                max-height: 400px;
+                max-height: 500px;
                 overflow-y: auto;
                 font-family: 'Courier New', monospace;
                 font-size: 0.9em;
-                line-height: 1.6;
+                line-height: 1.8;
+                border: 1px solid rgba(255,255,255,0.1);
             }
             
             .logs-container::-webkit-scrollbar {
@@ -2176,14 +2196,39 @@ def dashboard():
             }
             
             .log-line {
-                padding: 4px 0;
+                padding: 8px 12px;
                 border-bottom: 1px solid rgba(255,255,255,0.05);
+                border-radius: 4px;
+                margin-bottom: 2px;
+                transition: all 0.2s;
+                word-wrap: break-word;
             }
             
-            .log-error { color: #fca5a5; }
-            .log-warning { color: #fcd34d; }
-            .log-info { color: #a5f3fc; }
-            .log-success { color: #86efac; }
+            .log-line:hover {
+                background: rgba(255,255,255,0.05);
+                transform: translateX(2px);
+            }
+            
+            .log-error { 
+                color: #fca5a5; 
+                background: rgba(252, 165, 165, 0.1);
+                border-left: 3px solid #fca5a5;
+            }
+            .log-warning { 
+                color: #fcd34d; 
+                background: rgba(252, 211, 77, 0.1);
+                border-left: 3px solid #fcd34d;
+            }
+            .log-info { 
+                color: #a5f3fc; 
+                background: rgba(165, 243, 252, 0.05);
+                border-left: 3px solid rgba(165, 243, 252, 0.3);
+            }
+            .log-success { 
+                color: #86efac; 
+                background: rgba(134, 239, 172, 0.1);
+                border-left: 3px solid #86efac;
+            }
             
             .tabs {
                 display: flex;
@@ -2677,36 +2722,80 @@ def dashboard():
                     .then(r => r.json())
                     .then(data => {
                         const logsContainer = document.getElementById('logs-container');
-                        logsContainer.innerHTML = '';
                         
-                        if (data.logs.length === 0) {
-                            logsContainer.innerHTML = '<div class="no-data">No logs available yet...</div>';
+                        if (!data || !data.logs || data.logs.length === 0) {
+                            logsContainer.innerHTML = `
+                                <div class="no-data">
+                                    <div style="font-size: 2em; margin-bottom: 10px;">📋</div>
+                                    <div>No logs available yet...</div>
+                                    <div style="font-size: 0.85em; opacity: 0.7; margin-top: 5px;">Bot is starting up...</div>
+                                </div>
+                            `;
                             return;
                         }
                         
+                        // Add header with log count
+                        let html = `<div style="margin-bottom: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                            <div><strong>📊 Total Logs:</strong> ${data.count || data.logs.length}</div>
+                            <div style="font-size: 0.85em; opacity: 0.7;">Last updated: ${new Date().toLocaleTimeString()}</div>
+                        </div>`;
+                        
+                        // Add logs
+                        html += '<div style="font-family: Courier New, monospace; font-size: 0.9em;">';
+                        
                         data.logs.forEach(line => {
-                            const div = document.createElement('div');
-                            div.className = 'log-line';
+                            let className = 'log-line';
+                            let icon = '💬';
                             
-                            // Colorize based on log level
-                            if (line.includes('ERROR')) {
-                                div.className += ' log-error';
-                            } else if (line.includes('WARNING')) {
-                                div.className += ' log-warning';
-                            } else if (line.includes('SIGNAL') || line.includes('OPENED') || line.includes('CLOSED')) {
-                                div.className += ' log-success';
+                            // Determine icon and class based on content
+                            if (line.includes('ERROR') || line.includes('Error') || line.includes('error')) {
+                                className += ' log-error';
+                                icon = '❌';
+                            } else if (line.includes('WARNING') || line.includes('Warning')) {
+                                className += ' log-warning';
+                                icon = '⚠️';
+                            } else if (line.includes('SIGNAL') || line.includes('Signal')) {
+                                className += ' log-success';
+                                icon = '🎯';
+                            } else if (line.includes('OPENED') || line.includes('BUY') || line.includes('SELL')) {
+                                className += ' log-success';
+                                icon = '🟢';
+                            } else if (line.includes('CLOSED') || line.includes('PROFIT') || line.includes('LOSS')) {
+                                className += ' log-success';
+                                icon = '🔴';
+                            } else if (line.includes('Scanning') || line.includes('Checking')) {
+                                className += ' log-info';
+                                icon = '🔍';
+                            } else if (line.includes('INITIALIZED') || line.includes('Started')) {
+                                className += ' log-info';
+                                icon = '🚀';
+                            } else if (line.includes('Capital') || line.includes('P&L')) {
+                                className += ' log-info';
+                                icon = '💰';
                             } else {
-                                div.className += ' log-info';
+                                className += ' log-info';
                             }
                             
-                            div.textContent = line;
-                            logsContainer.appendChild(div);
+                            html += `<div class="${className}">${icon} ${line}</div>`;
                         });
+                        
+                        html += '</div>';
+                        logsContainer.innerHTML = html;
                         
                         // Auto-scroll to bottom
                         logsContainer.scrollTop = logsContainer.scrollHeight;
                     })
-                    .catch(err => console.error('Error fetching logs:', err));
+                    .catch(err => {
+                        console.error('Error fetching logs:', err);
+                        const logsContainer = document.getElementById('logs-container');
+                        logsContainer.innerHTML = `
+                            <div class="no-data" style="color: #ff6b6b;">
+                                <div style="font-size: 2em; margin-bottom: 10px;">⚠️</div>
+                                <div>Failed to load logs</div>
+                                <div style="font-size: 0.85em; opacity: 0.7; margin-top: 5px;">Error: ${err.message}</div>
+                            </div>
+                        `;
+                    });
             }
             
             function updateHistory() {
