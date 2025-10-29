@@ -27,9 +27,17 @@ class CandidateEvaluator:
     
     def load_candidates(self, candidates_file="reports/candidates_raw.json"):
         """Load strategy candidates"""
-        with open(candidates_file, 'r') as f:
-            data = json.load(f)
-        return data['candidates']
+        # 🔥 BUG FIX: Add error handling for JSON parsing and key access!
+        try:
+            with open(candidates_file, 'r') as f:
+                data = json.load(f)
+            return data.get('candidates', [])
+        except json.JSONDecodeError as e:
+            logger.error(f"Malformed JSON in {candidates_file}: {e}")
+            return []
+        except KeyError:
+            logger.error(f"'candidates' key not found in {candidates_file}")
+            return []
     
     def load_data(self, symbol, timeframe="5m"):
         """Load data for a symbol"""

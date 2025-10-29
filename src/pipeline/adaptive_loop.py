@@ -493,6 +493,9 @@ class WalkForwardBacktester:
         # Calculate max drawdown
         cumulative = np.cumprod([1 + pnl for pnl in pnls])
         running_max = np.maximum.accumulate(cumulative)
+        
+        # 🔥 BUG FIX: Prevent division by zero in drawdown calculation!
+        running_max = np.where(running_max == 0, 1e-10, running_max)
         drawdown = (cumulative - running_max) / running_max
         max_drawdown_pct = np.min(drawdown) * 100
         
