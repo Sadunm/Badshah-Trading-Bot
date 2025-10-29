@@ -108,6 +108,12 @@ class PerformanceAnalytics:
         if current_capital > self.peak_capital:
             self.peak_capital = current_capital
         
+        # 🔥 BUG FIX: Check for zero peak_capital before division!
+        if self.peak_capital <= 0:
+            logger.warning(f"⚠️ Invalid peak_capital ({self.peak_capital}), cannot calculate drawdown")
+            self.current_drawdown = 0
+            return
+        
         self.current_drawdown = (self.peak_capital - current_capital) / self.peak_capital * 100
         
         if self.current_drawdown > self.max_drawdown:
@@ -540,6 +546,16 @@ class UltimateHybridBot:
             logger.info("✅ Using BINANCE TESTNET API")
         
         # 🚀 API KEY ROTATION SYSTEM
+        # 🔥 BUG FIX: Validate API_KEYS is not empty!
+        if not API_KEYS or len(API_KEYS) == 0:
+            raise RuntimeError("❌ CRITICAL: API_KEYS list is empty! Bot cannot function without API keys!")
+        
+        # 🔥 BUG FIX: Validate COIN_UNIVERSE is not empty!
+        if not COIN_UNIVERSE or len(COIN_UNIVERSE) == 0:
+            raise RuntimeError("❌ CRITICAL: COIN_UNIVERSE list is empty! Bot needs coins to trade!")
+        
+        logger.info(f"✅ Loaded {len(COIN_UNIVERSE)} coins for trading")
+        
         self.api_keys = API_KEYS
         self.current_api_index = 0
         self.api_call_counts = {i: 0 for i in range(len(API_KEYS))}
@@ -1585,7 +1601,13 @@ class UltimateHybridBot:
                     timeout=5  # Shorter timeout for faster retries
                 )
                 if response.status_code == 200:
-                    return float(response.json()['price'])
+                    # 🔥 BUG FIX: Safe JSON parsing with get()
+                    json_data = response.json()
+                    if 'price' in json_data:
+                        return float(json_data['price'])
+                    else:
+                        logger.error(f"❌ Unexpected response format for {symbol}: missing 'price' key")
+                        return None
                 elif response.status_code == 429:  # Rate limit
                     wait_time = (2 ** attempt) * 2  # Longer wait for rate limits
                     logger.warning(f"Rate limited for {symbol}, waiting {wait_time}s")
@@ -2481,6 +2503,11 @@ class UltimateHybridBot:
     def calculate_position_size(self, symbol, strategy_name, price):
         """Calculate position size with AUTO-COMPOUNDING! 💰"""
         try:
+            # 🔥 BUG FIX: Validate strategy_name exists!
+            if strategy_name not in STRATEGIES:
+                logger.error(f"❌ Invalid strategy '{strategy_name}' in calculate_position_size")
+                return 0
+            
             strategy = STRATEGIES[strategy_name]
             
             # 💰💰 AUTO-COMPOUNDING ENABLED! 💰💰
@@ -2627,6 +2654,11 @@ class UltimateHybridBot:
                 # Check if already have position with this strategy
                 position_key = f"{symbol}_{strategy_name}"
                 if position_key in self.positions:
+                    return False
+                
+                # 🔥 BUG FIX: Validate strategy_name exists in STRATEGIES!
+                if strategy_name not in STRATEGIES:
+                    logger.error(f"❌ CRITICAL: Invalid strategy name '{strategy_name}' - not in STRATEGIES dict!")
                     return False
                 
                 # Check max positions for strategy
@@ -3004,6 +3036,17 @@ class UltimateHybridBot:
             try:
                 symbol = position['symbol']
                 strategy_name = position['strategy']
+                
+                # 🔥 BUG FIX: Validate strategy exists before accessing!
+                if strategy_name not in STRATEGIES:
+                    logger.error(f"❌ CRITICAL: Position {position_key} has invalid strategy '{strategy_name}'!")
+                    logger.error(f"❌ This position is corrupted - forcing close to free capital")
+                    # Close this corrupted position at current market price
+                    current_price = self.get_cached_price(symbol)
+                    if current_price:
+                        positions_to_close.append((position_key, current_price, 'Corrupted Strategy Data'))
+                    continue
+                
                 strategy = STRATEGIES[strategy_name]
                 
                 # 🎯 OPTIMIZATION: Use cached price to avoid redundant API calls
@@ -3521,8 +3564,14 @@ def get_stats():
     global trading_bot, trading_stats
     
     if trading_bot:
+        # 🔥 BUG FIX: Thread-safe access to trades list!
+        with trading_bot.data_lock:
+            # Create snapshot of trades to avoid modification during iteration
+            trades_snapshot = list(trading_bot.trades)
+            positions_count = len(trading_bot.positions)
+        
         # 🔧 CRITICAL FIX: Only count CLOSED trades (with P&L)
-        closed_trades = [t for t in trading_bot.trades if 'pnl' in t]
+        closed_trades = [t for t in trades_snapshot if 'pnl' in t]
         wins = sum(1 for t in closed_trades if t.get('pnl', 0) > 0)
         total = len(closed_trades)
         
@@ -3554,7 +3603,7 @@ def get_stats():
             'total_pnl': total_pnl,
             'current_capital': trading_bot.current_capital,
             'reserved_capital': trading_bot.reserved_capital,
-            'open_positions': len(trading_bot.positions),
+            'open_positions': positions_count,  # 🔥 BUG FIX: Use thread-safe snapshot
             'strategy_stats': dict(trading_bot.strategy_stats),
             # 🆕 NEW STATS
             'total_strategies': len(STRATEGIES),
