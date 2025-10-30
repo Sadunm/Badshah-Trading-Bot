@@ -2591,46 +2591,58 @@ class UltimateHybridBot:
         ind = data['indicators']
         price = data['price']
         
-        # 🔥 SUPER AGGRESSIVE: Lowered filters for MORE TRADES!
-        if ind['volume_ratio'] < 0.8:  # Much lower! (was 1.5)
+        # 🔥🔥🔥 ULTRA SUPER AGGRESSIVE: LOWEST FILTERS EVER! 🔥🔥🔥
+        # Volume: Accept even 30% of average! (was 0.8)
+        if ind['volume_ratio'] < 0.3:
+            logger.info(f"❌ {symbol} SCALP: Volume too low ({ind['volume_ratio']:.2f} < 0.3)")
             return None
         
-        # Lower volatility required
-        if ind['atr_pct'] < 0.5:  # Much lower! (was 1.5)
+        # ATR: Accept even 0.1%! (was 0.5)
+        if ind['atr_pct'] < 0.1:
+            logger.info(f"❌ {symbol} SCALP: ATR too low ({ind['atr_pct']:.2f}% < 0.1%)")
             return None
         
-        # Quick momentum signals
-        if ind['rsi'] < 45 and ind['momentum_3'] < -0.5:
-            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=55)
+        # 🔥 ULTRA WIDE RSI RANGE: 35-65 (was 45-55!)
+        if ind['rsi'] < 48:  # Below neutral = BUY DIP!
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=40)  # Lower base!
+            logger.info(f"✅ {symbol} SCALP BUY: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
             return {'action': 'BUY', 'reason': 'Scalping Dip', 'confidence': confidence}
         
-        if ind['rsi'] > 55 and ind['momentum_3'] > 0.5:
-            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=55)
+        if ind['rsi'] > 52:  # Above neutral = SELL PUMP!
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=40)  # Lower base!
+            logger.info(f"✅ {symbol} SCALP SELL: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
             return {'action': 'SELL', 'reason': 'Scalping Pump', 'confidence': confidence}
         
+        logger.info(f"⏸️ {symbol} SCALP: RSI neutral ({ind['rsi']:.1f}), no signal")
         return None
     
     def generate_day_trading_signal(self, symbol, data):
         """DAY TRADING: 1-8 hour holds on volatility"""
         ind = data['indicators']
         
-        # 🔥 SUPER AGGRESSIVE: Much lower requirements!
-        if ind['volume_ratio'] < 0.7:  # Much lower! (was 1.4)
+        # 🔥🔥🔥 ULTRA SUPER AGGRESSIVE: MINIMUM FILTERS! 🔥🔥🔥
+        # Volume: Accept even 25% of average! (was 0.7)
+        if ind['volume_ratio'] < 0.25:
+            logger.info(f"❌ {symbol} DAY: Volume too low ({ind['volume_ratio']:.2f} < 0.25)")
             return None
         
-        # Lower volatility threshold
-        if ind['atr_pct'] < 0.3:  # Much lower! (was 1.0)
+        # ATR: Accept even 0.08%! (was 0.3)
+        if ind['atr_pct'] < 0.08:
+            logger.info(f"❌ {symbol} DAY: ATR too low ({ind['atr_pct']:.2f}% < 0.08%)")
             return None
         
-        # Trend + RSI
-        if ind['ema_9'] > ind['ema_21'] and ind['rsi'] < 50:
-            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=60)
-            return {'action': 'BUY', 'reason': 'Day Trade Uptrend Dip', 'confidence': confidence}
+        # 🔥 RELAXED TREND: Just need ANY trend direction!
+        if ind['ema_9'] > ind['ema_21'] and ind['rsi'] < 55:  # Uptrend + not overbought
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=38)  # Lower base!
+            logger.info(f"✅ {symbol} DAY BUY: EMA Uptrend, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
+            return {'action': 'BUY', 'reason': 'Day Trade Uptrend', 'confidence': confidence}
         
-        if ind['ema_9'] < ind['ema_21'] and ind['rsi'] > 50:
-            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=60)
-            return {'action': 'SELL', 'reason': 'Day Trade Downtrend Rally', 'confidence': confidence}
+        if ind['ema_9'] < ind['ema_21'] and ind['rsi'] > 45:  # Downtrend + not oversold
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=38)  # Lower base!
+            logger.info(f"✅ {symbol} DAY SELL: EMA Downtrend, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
+            return {'action': 'SELL', 'reason': 'Day Trade Downtrend', 'confidence': confidence}
         
+        logger.info(f"⏸️ {symbol} DAY: No clear trend, no signal")
         return None
     
     def generate_swing_trading_signal(self, symbol, data):
