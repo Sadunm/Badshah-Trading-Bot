@@ -1,0 +1,52 @@
+[
+  {
+    "id": "TC001",
+    "title": "verify_dashboard_stats_api_returns_correct_buss_v2_metrics",
+    "description": "Test the /api/stats GET endpoint to ensure it returns accurate system statistics including capital, P&L, win rate, and BUSS v2 metrics such as Market Health Index, Expected Profit per Risk Unit, dynamic exposure, and regulation state reflecting the current bot state."
+  },
+  {
+    "id": "TC002",
+    "title": "validate_positions_api_returns_current_open_positions_with_unrealized_pnl",
+    "description": "Test the /api/positions GET endpoint to verify it returns the list of current open positions along with their unrealized profit and loss values accurately."
+  },
+  {
+    "id": "TC003",
+    "title": "check_logs_api_returns_last_200_log_lines",
+    "description": "Test the /api/logs GET endpoint to confirm it returns the most recent 200 log lines from the bot's operation logs."
+  },
+  {
+    "id": "TC004",
+    "title": "validate_trade_history_api_returns_all_closed_trades_and_current_session_trades",
+    "description": "Test the /api/trade-history GET endpoint to ensure it returns all closed trades from the CSV log files combined with the current session's trade data accurately."
+  },
+  {
+    "id": "TC005",
+    "title": "test_generate_scalping_signal_function_for_correct_signal_generation",
+    "description": "Test the generate_scalping_signal function to verify it generates valid trading signals based on the scalping strategy using the appropriate technical indicators."
+  },
+  {
+    "id": "TC006",
+    "title": "test_calculate_signal_confidence_returns_correct_percentage_value",
+    "description": "Test the calculate_signal_confidence function to ensure it returns the confidence score as a percentage (0-100) correctly, verifying the bug fix that converts the 0-1 scale to percentage properly."
+  },
+  {
+    "id": "TC007",
+    "title": "validate_risk_management_limits_are_enforced_correctly",
+    "description": "Test the risk management system to verify enforcement of limits such as max total positions, daily loss limit, consecutive loss pause, and max daily trades to prevent breaches."
+  },
+  {
+    "id": "TC008",
+    "title": "verify_adaptive_confidence_threshold_adjusts_with_win_rate",
+    "description": "Test the update_adaptive_confidence function to confirm the minimum confidence threshold dynamically adjusts within the 10-20% range based on recent win rate, ensuring the bug fix is effective."
+  },
+  {
+    "id": "TC009",
+    "title": "test_open_position_function_respects_position_sizing_and_risk_limits",
+    "description": "Test the open_position function to verify it correctly calculates position size, respects risk limits, and opens positions only when all validation checks pass."
+  },
+  {
+    "id": "TC010",
+    "title": "validate_market_regime_detection_classifies_correctly_and_adjusts_allocation",
+    "description": "Test the analyze_market_regime and adjust_capital_allocation functions to ensure market conditions are classified into the six regimes accurately and capital allocation adjusts accordingly."
+  }
+]

@@ -39,16 +39,49 @@ if sys.platform == 'win32':
     except Exception:
         pass  # If this fails, emojis will show as '?' but bot will still work
 
-# Setup logging
+# Setup logging with TIMESTAMPED FILES for 4-hour debugging sessions
+from logging.handlers import RotatingFileHandler
+
+# Create session-specific log filename with timestamp
+log_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+session_log_file = f'logs/session_{log_timestamp}.log'
+debug_log_file = f'logs/debug_{log_timestamp}.log'
+
+# Configure logging with multiple handlers
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Capture ALL logs (DEBUG level)
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
+        # Main session log (INFO level, 50MB max, keeps 3 backups)
+        RotatingFileHandler(
+            session_log_file, 
+            maxBytes=50*1024*1024,  # 50 MB
+            backupCount=3,
+            encoding='utf-8'
+        ),
+        # Debug log (DEBUG level, 100MB max, keeps 2 backups)
+        RotatingFileHandler(
+            debug_log_file,
+            maxBytes=100*1024*1024,  # 100 MB
+            backupCount=2,
+            encoding='utf-8'
+        ),
+        # Old general log for backward compatibility
         logging.FileHandler('logs/multi_coin_trading.log', encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)  # Now uses UTF-8 wrapped stdout
+        # Console output (INFO level only)
+        logging.StreamHandler(sys.stdout)
     ]
 )
+
 logger = logging.getLogger(__name__)
+
+# Log the session start
+logger.info("="*80)
+logger.info(f"🚀 NEW TRADING SESSION STARTED")
+logger.info(f"📝 Session Logs: {session_log_file}")
+logger.info(f"🔍 Debug Logs: {debug_log_file}")
+logger.info(f"⏰ Logs will be saved for debugging (4+ hours minimum)")
+logger.info("="*80)
 
 # 🔥 MULTIPLE API KEYS FOR LOAD DISTRIBUTION 🔥
 # Rotates between 3 API keys to handle 65 coins without rate limit issues!

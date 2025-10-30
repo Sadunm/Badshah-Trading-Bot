@@ -3,5 +3,15 @@
   "type": "backend",
   "scope": "codebase",
   "localEndpoint": "http://localhost:10000/api/stats",
-  "backendAuthType": "public"
+  "backendAuthType": "public",
+  "executionArgs": {
+    "projectName": "BADSHAH TRADEINGGG",
+    "projectPath": "C:\\Users\\Administrator\\Desktop\\BADSHAH TRADEINGGG - Copy\\BADSHAH TRADEINGGG",
+    "testIds": [],
+    "additionalInstruction": "Find all bugs in the trading bot, especially why trades are not executing despite signals being generated. Focus on confidence calculation bugs, threshold validation bugs, and position opening validation bugs.",
+    "envs": {
+      "API_KEY": "sk-user-W_5zRZnVTwIJtwsPCm2P7i9PMLuz9rJWluYrWD_8jJO706dZpUt-czvnTYvqazyES7b67rr7n38hsAwNCcIkp_xqeBG0tOBh5XVQZDGF6Jo84iEu2xrpl3SfyPs1brxg9RA"
+    }
+  },
+  "proxy": "http://6f1665c3-7124-49b5-a2d4-fcce7e816cbe:1zfTVNqGM7zMuBGVS6PhgOWNmfReTDl8@tun.testsprite.com:8080"
 }
