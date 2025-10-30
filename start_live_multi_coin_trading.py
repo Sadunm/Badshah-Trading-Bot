@@ -603,8 +603,37 @@ class UltimateHybridBot:
         
         # 🎯 ADAPTIVE CONFIDENCE SYSTEM - 🔥 ULTRA AGGRESSIVE! 🔥
         self.recent_trades_window = deque(maxlen=20)  # Last 20 trades (win/loss only)
-        self.base_confidence_threshold = 45  # 45% - ULTRA AGGRESSIVE! More trades!
-        self.current_confidence_threshold = 45  # Start aggressive!
+        self.base_confidence_threshold = 25  # 25% - SUPER AGGRESSIVE! WAY MORE trades!
+        self.current_confidence_threshold = 25  # Start super aggressive!
+        
+        # 🔥 BUSS V2: EPRU-BASED LEARNING SYSTEM 🔥
+        self.epru = 1.0  # Expected Profit per Risk Unit (target: > 1.0)
+        self.avg_win = 0
+        self.avg_loss = 0
+        self.total_risk_units = 0
+        self.total_profit_units = 0
+        self.epru_history = deque(maxlen=50)  # Track EPRU over time
+        
+        # 🔥 BUSS V2: MARKET MEMORY CACHE (Last 5 Cycles) 🔥
+        self.market_memory = deque(maxlen=5)  # Stores last 5 market states
+        self.last_regime = 'NEUTRAL'
+        self.transition_count = 0
+        
+        # 🔥 BUSS V2: MARKET HEALTH INDEX (MHI) 🔥
+        self.mhi = 1.0  # Market Health Index (0-2, 1 = neutral)
+        self.mhi_history = deque(maxlen=20)  # Rolling 20-candle stability
+        
+        # 🔥 BUSS V2: DYNAMIC EXPOSURE SYSTEM 🔥
+        self.base_exposure = 0.10  # 10% base position size
+        self.current_exposure = 0.10  # Adjusted dynamically
+        self.max_exposure = 0.20  # Never exceed 20% per trade
+        self.min_exposure = 0.02  # Never below 2%
+        
+        # 🔥 BUSS V2: SELF-REGULATION MATRIX 🔥
+        self.regulation_state = 'NORMAL'  # NORMAL, CAUTIOUS, PAUSED, EMERGENCY
+        self.max_loss_streak = 4  # Circuit breaker
+        self.current_session_drawdown = 0
+        self.max_session_drawdown = 0.05  # 5% max drawdown per session
         
         # Capital management
         self.initial_capital = initial_capital
@@ -679,7 +708,300 @@ class UltimateHybridBot:
         logger.info(f"🪙 Coins: {len(COIN_UNIVERSE)}")
         logger.info(f"🔑 API Keys: {len(self.api_keys)} (Rotation Enabled)")
         logger.info(f"✅ Multi-Strategy | Multi-Timeframe | Multi-Coin")
+        logger.info(f"🔥 BUSS V2 FEATURES ENABLED: EPRU, MHI, Dynamic Exposure, Market Memory")
         
+    # ========================================================================
+    # 🔥 BUSS V2: MARKET HEALTH INDEX (MHI) CALCULATION
+    # ========================================================================
+    
+    def calculate_mhi(self):
+        """
+        Calculate Market Health Index (MHI)
+        Returns stability score (0-2): 1 = neutral, >1 = healthy, <1 = unstable
+        """
+        try:
+            # Get BTC price data for stability calculation
+            btc_data = self.market_data.get('BTCUSDT')
+            if not btc_data or 'history' not in btc_data:
+                return 1.0  # Default neutral
+            
+            prices = btc_data['history']
+            if len(prices) < 20:
+                return 1.0
+            
+            # Calculate returns stability
+            returns = np.diff(prices[-20:]) / prices[-21:-1]
+            volatility = np.std(returns)
+            
+            # Calculate trend consistency
+            sma_10 = np.mean(prices[-10:])
+            sma_20 = np.mean(prices[-20:])
+            trend_strength = abs(sma_10 - sma_20) / sma_20 if sma_20 > 0 else 0
+            
+            # MHI formula: (1 - volatility_factor) + trend_strength
+            # Low volatility + strong trend = high MHI
+            vol_factor = min(volatility * 10, 1.0)  # Cap at 1.0
+            mhi = (1 - vol_factor) + (trend_strength * 10)
+            
+            # Clamp between 0 and 2
+            mhi = max(0.0, min(2.0, mhi))
+            
+            self.mhi = mhi
+            self.mhi_history.append(mhi)
+            
+            logger.debug(f"📊 MHI: {mhi:.2f} (Vol: {volatility:.4f}, Trend: {trend_strength:.4f})")
+            return mhi
+            
+        except Exception as e:
+            logger.error(f"Error calculating MHI: {e}")
+            return 1.0
+    
+    # ========================================================================
+    # 🔥 BUSS V2: EPRU (Expected Profit per Risk Unit) TRACKING
+    # ========================================================================
+    
+    def update_epru(self, trade_pnl, trade_risk):
+        """
+        Update EPRU after each trade
+        EPRU = (avg_win / avg_loss) * win_rate
+        """
+        try:
+            if trade_pnl > 0:
+                # Win
+                self.total_profit_units += abs(trade_pnl)
+                self.avg_win = self.total_profit_units / max(1, sum(1 for t in self.recent_trades_window if t == 'win'))
+            else:
+                # Loss
+                self.total_risk_units += abs(trade_pnl)
+                self.avg_loss = self.total_risk_units / max(1, sum(1 for t in self.recent_trades_window if t == 'loss'))
+            
+            # Calculate EPRU
+            if self.avg_loss > 0 and len(self.recent_trades_window) > 0:
+                wins = sum(1 for t in self.recent_trades_window if t == 'win')
+                total = len(self.recent_trades_window)
+                win_rate = wins / total if total > 0 else 0
+                
+                self.epru = (self.avg_win / self.avg_loss) * win_rate if self.avg_loss > 0 else 1.0
+                self.epru_history.append(self.epru)
+                
+                logger.info(f"📈 EPRU Updated: {self.epru:.2f} (Avg Win: ${self.avg_win:.2f}, Avg Loss: ${self.avg_loss:.2f}, WR: {win_rate*100:.1f}%)")
+                
+                # 🔥 FEEDBACK LOOP: Adjust based on EPRU!
+                if self.epru < 1.0:
+                    # Losing more than winning - be MORE selective!
+                    self.base_confidence_threshold = min(60, self.base_confidence_threshold + 2)
+                    logger.warning(f"⚠️ EPRU < 1.0 → Increasing threshold to {self.base_confidence_threshold}%")
+                elif self.epru > 1.3 and len(self.trades) < 10:  # Not enough trades yet
+                    # Winning well but few trades - be LESS selective!
+                    self.base_confidence_threshold = max(35, self.base_confidence_threshold - 2)
+                    logger.info(f"✅ EPRU > 1.3 → Decreasing threshold to {self.base_confidence_threshold}% (more trades!)")
+            
+        except Exception as e:
+            logger.error(f"Error updating EPRU: {e}")
+    
+    # ========================================================================
+    # 🔥 BUSS V2: DYNAMIC EXPOSURE CALCULATION
+    # ========================================================================
+    
+    def calculate_dynamic_exposure(self):
+        """
+        Calculate position size based on market conditions
+        exposure = (market_confidence * MHI) * adaptive_factor
+        """
+        try:
+            # Calculate volatility index (0-10 scale)
+            btc_data = self.market_data.get('BTCUSDT')
+            if btc_data and 'indicators' in btc_data:
+                vol_pct = btc_data['indicators'].get('atr_pct', 1.5)
+                volatility_index = min(10, vol_pct)  # Cap at 10
+            else:
+                volatility_index = 1.5  # Default
+            
+            # Adaptive factor: calm market → higher exposure
+            adaptive_factor = 1 - (volatility_index / 10)
+            adaptive_factor = max(0.5, min(1.5, adaptive_factor))  # Clamp 0.5-1.5
+            
+            # Calculate market confidence (based on regime)
+            regime_confidence = {
+                'STRONG_UPTREND': 1.0,
+                'WEAK_UPTREND': 0.8,
+                'SIDEWAYS': 0.6,
+                'WEAK_DOWNTREND': 0.4,
+                'STRONG_DOWNTREND': 0.3,
+                'HIGH_VOLATILITY': 0.5
+            }.get(self.current_market_regime, 0.6)
+            
+            # Final exposure formula
+            exposure = (regime_confidence * self.mhi) * adaptive_factor * self.base_exposure
+            
+            # Apply EPRU adjustment
+            if self.epru < 1.0:
+                exposure *= 0.8  # Reduce 20% if losing
+            elif self.epru > 1.3:
+                exposure *= 1.2  # Increase 20% if winning well
+            
+            # Clamp to limits
+            exposure = max(self.min_exposure, min(self.max_exposure, exposure))
+            
+            self.current_exposure = exposure
+            logger.debug(f"💰 Dynamic Exposure: {exposure*100:.1f}% (MHI: {self.mhi:.2f}, Regime: {self.current_market_regime}, EPRU: {self.epru:.2f})")
+            
+            return exposure
+            
+        except Exception as e:
+            logger.error(f"Error calculating exposure: {e}")
+            return self.base_exposure
+    
+    # ========================================================================
+    # 🔥 BUSS V2: MARKET TRANSITION DETECTION
+    # ========================================================================
+    
+    def detect_market_transition(self):
+        """
+        Detect if market regime has changed
+        Returns: transition type or None
+        """
+        try:
+            if len(self.market_memory) < 2:
+                return None
+            
+            current_regime = self.current_market_regime
+            previous_regime = self.last_regime
+            
+            if current_regime != previous_regime:
+                self.transition_count += 1
+                transition_type = f"{previous_regime} → {current_regime}"
+                
+                logger.warning(f"🔄 MARKET TRANSITION DETECTED: {transition_type}")
+                
+                # Auto-adjust based on transition
+                if 'UPTREND' in previous_regime and 'SIDEWAYS' in current_regime:
+                    logger.info(f"  📉 Uptrend weakening → Partial close recommended")
+                    # TODO: Implement partial position closing
+                    
+                elif 'SIDEWAYS' in previous_regime and 'DOWNTREND' in current_regime:
+                    logger.warning(f"  ⚠️ Turning bearish → Reduce exposure!")
+                    self.current_exposure *= 0.7  # Reduce 30%
+                    
+                elif 'DOWNTREND' in previous_regime and 'UPTREND' in current_regime:
+                    logger.info(f"  🚀 Recovery detected → Resume normal trading")
+                    self.consecutive_losses = max(0, self.consecutive_losses - 1)  # Forgive 1 loss
+                
+                self.last_regime = current_regime
+                return transition_type
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error detecting transition: {e}")
+            return None
+    
+    # ========================================================================
+    # 🔥 BUSS V2: FEEDBACK AI LOOP (Every 20 Trades Review)
+    # ========================================================================
+    
+    def feedback_loop_review(self):
+        """
+        Review performance every 20 trades and auto-adjust
+        """
+        try:
+            total_trades = len([t for t in self.trades if 'pnl' in t])
+            
+            if total_trades % 20 != 0 or total_trades == 0:
+                return  # Only run every 20 trades
+            
+            logger.info(f"\n{'='*70}")
+            logger.info(f"🧠 FEEDBACK AI LOOP - 20 TRADE REVIEW")
+            logger.info(f"{'='*70}")
+            
+            # Calculate metrics
+            wins = sum(1 for t in self.trades if t.get('pnl', 0) > 0)
+            losses = total_trades - wins
+            win_rate = wins / total_trades * 100 if total_trades > 0 else 0
+            
+            avg_win_amt = np.mean([t['pnl'] for t in self.trades if t.get('pnl', 0) > 0]) if wins > 0 else 0
+            avg_loss_amt = abs(np.mean([t['pnl'] for t in self.trades if t.get('pnl', 0) < 0])) if losses > 0 else 0
+            
+            logger.info(f"  Win Rate: {win_rate:.1f}% ({wins}W / {losses}L)")
+            logger.info(f"  EPRU: {self.epru:.2f}")
+            logger.info(f"  Avg Win: ${avg_win_amt:.2f} | Avg Loss: ${avg_loss_amt:.2f}")
+            logger.info(f"  Current Threshold: {self.base_confidence_threshold}%")
+            logger.info(f"  Current Exposure: {self.current_exposure*100:.1f}%")
+            
+            # Decision logic
+            if self.epru < 1.0:
+                logger.warning(f"  ⚠️ EPRU < 1.0 → System losing money!")
+                logger.warning(f"  🔧 AUTO-ADJUST: Increase threshold +5%, Reduce exposure -10%")
+                self.base_confidence_threshold = min(65, self.base_confidence_threshold + 5)
+                self.current_exposure *= 0.9
+                
+            elif self.epru > 1.3 and win_rate > 60:
+                logger.info(f"  ✅ EPRU > 1.3 & WR > 60% → System profitable!")
+                logger.info(f"  🔧 AUTO-ADJUST: Decrease threshold -3%, Keep exposure")
+                self.base_confidence_threshold = max(35, self.base_confidence_threshold - 3)
+                
+            elif win_rate < 45:
+                logger.warning(f"  ⚠️ Win Rate < 45% → Too many losses!")
+                logger.warning(f"  🔧 AUTO-ADJUST: Increase threshold +3%")
+                self.base_confidence_threshold = min(65, self.base_confidence_threshold + 3)
+            
+            logger.info(f"{'='*70}\n")
+            
+        except Exception as e:
+            logger.error(f"Error in feedback loop: {e}")
+    
+    # ========================================================================
+    # 🔥 BUSS V2: SELF-REGULATION MATRIX
+    # ========================================================================
+    
+    def check_self_regulation(self):
+        """
+        Circuit breaker system based on drawdown and streaks
+        Returns: regulation_state (NORMAL, CAUTIOUS, PAUSED, EMERGENCY)
+        """
+        try:
+            # Calculate current session drawdown
+            total_equity = self.current_capital + self.reserved_capital
+            session_start_capital = self.initial_capital  # TODO: Track session start separately
+            
+            if session_start_capital > 0:
+                self.current_session_drawdown = (session_start_capital - total_equity) / session_start_capital
+            
+            # Check conditions
+            emergency_triggered = False
+            pause_triggered = False
+            cautious_triggered = False
+            
+            # 1. Max Drawdown Check
+            if self.current_session_drawdown > self.max_session_drawdown:
+                logger.error(f"🚨 EMERGENCY: Drawdown {self.current_session_drawdown*100:.1f}% > Limit {self.max_session_drawdown*100:.1f}%")
+                logger.error(f"🛑 CUTTING ALL TRADES!")
+                emergency_triggered = True
+                self.regulation_state = 'EMERGENCY'
+                # TODO: Close all positions
+                
+            # 2. Loss Streak Check
+            elif self.consecutive_losses >= self.max_loss_streak:
+                logger.warning(f"⚠️ PAUSE: {self.consecutive_losses} consecutive losses → Cooling down")
+                pause_triggered = True
+                self.regulation_state = 'PAUSED'
+                
+            # 3. High Drawdown Warning
+            elif self.current_session_drawdown > self.max_session_drawdown * 0.7:
+                logger.warning(f"⚠️ CAUTIOUS: Drawdown {self.current_session_drawdown*100:.1f}% approaching limit")
+                cautious_triggered = True
+                self.regulation_state = 'CAUTIOUS'
+                self.current_exposure *= 0.7  # Reduce exposure 30%
+                
+            else:
+                self.regulation_state = 'NORMAL'
+            
+            return self.regulation_state
+            
+        except Exception as e:
+            logger.error(f"Error in self-regulation: {e}")
+            return 'NORMAL'
+    
     # ========================================================================
     # 🎯 INTELLIGENT STRATEGY SELECTION (Capital-Based)
     # ========================================================================
@@ -2269,12 +2591,12 @@ class UltimateHybridBot:
         ind = data['indicators']
         price = data['price']
         
-        # 🎯 ROUND 7 FIX #8: Higher volume filter for better quality (was 1.2)
-        if ind['volume_ratio'] < 1.5:
+        # 🔥 SUPER AGGRESSIVE: Lowered filters for MORE TRADES!
+        if ind['volume_ratio'] < 0.8:  # Much lower! (was 1.5)
             return None
         
-        # High volatility required
-        if ind['atr_pct'] < 1.5:
+        # Lower volatility required
+        if ind['atr_pct'] < 0.5:  # Much lower! (was 1.5)
             return None
         
         # Quick momentum signals
@@ -2292,12 +2614,12 @@ class UltimateHybridBot:
         """DAY TRADING: 1-8 hour holds on volatility"""
         ind = data['indicators']
         
-        # 🎯 ROUND 7 FIX #8: Higher volume filter (was 1.2)
-        if ind['volume_ratio'] < 1.4:
+        # 🔥 SUPER AGGRESSIVE: Much lower requirements!
+        if ind['volume_ratio'] < 0.7:  # Much lower! (was 1.4)
             return None
         
-        # Moderate volatility
-        if ind['atr_pct'] < 1.0:
+        # Lower volatility threshold
+        if ind['atr_pct'] < 0.3:  # Much lower! (was 1.0)
             return None
         
         # Trend + RSI
@@ -2391,23 +2713,23 @@ class UltimateHybridBot:
         """MOMENTUM: Ride strong trends"""
         ind = data['indicators']
         
-        # 🎯 IMPROVEMENT: Volume filter (stronger requirement for momentum)
-        if ind['volume_ratio'] < 1.5:  # Higher volume needed for momentum
+        # 🔥 SUPER AGGRESSIVE: Much lower requirements!
+        if ind['volume_ratio'] < 0.6:  # Much lower! (was 1.5)
             return None
         
-        # Strong momentum required
-        if abs(ind['momentum_10']) < 3.0:
+        # Lower momentum requirement
+        if abs(ind['momentum_10']) < 1.0:  # Much lower! (was 3.0)
             return None
         
-        # Bullish momentum
-        if ind['momentum_10'] > 3.0 and ind['macd'] > ind['macd_signal'] and ind['rsi'] < 65:
+        # Bullish momentum (MUCH EASIER!)
+        if ind['momentum_10'] > 1.0 and ind['macd'] > ind['macd_signal'] and ind['rsi'] < 70:
             confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=62)
-            return {'action': 'BUY', 'reason': 'Strong Momentum Up', 'confidence': confidence}
+            return {'action': 'BUY', 'reason': 'Momentum Up', 'confidence': confidence}
         
-        # Bearish momentum
-        if ind['momentum_10'] < -3.0 and ind['macd'] < ind['macd_signal'] and ind['rsi'] > 35:
+        # Bearish momentum (MUCH EASIER!)
+        if ind['momentum_10'] < -1.0 and ind['macd'] < ind['macd_signal'] and ind['rsi'] > 30:
             confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=62)
-            return {'action': 'SELL', 'reason': 'Strong Momentum Down', 'confidence': confidence}
+            return {'action': 'SELL', 'reason': 'Momentum Down', 'confidence': confidence}
         
         return None
     
@@ -2681,6 +3003,48 @@ class UltimateHybridBot:
                     logger.error(f"❌ Failed to detect market condition for {symbol}: {e}")
                     market_condition = "UNKNOWN"
                 
+                # 🔥 BUSS V2: ATR-BASED DYNAMIC STOPS/TARGETS! 🔥
+                # Get ATR for this symbol
+                atr = 0
+                atr_pct = 0
+                if symbol in self.market_data:
+                    indicators = self.market_data[symbol].get('indicators', {})
+                    atr_pct = indicators.get('atr_pct', 1.5)
+                    atr = (price * atr_pct) / 100  # Convert % to absolute value
+                
+                # Use ATR if available, otherwise fallback to strategy defaults
+                if atr > 0:
+                    # 🔥 ATR-BASED CALCULATION! 🔥
+                    # Regime-based multipliers
+                    regime_multipliers = {
+                        'STRONG_UPTREND': {'stop': 1.5, 'target': 3.0},
+                        'WEAK_UPTREND': {'stop': 1.2, 'target': 2.5},
+                        'SIDEWAYS': {'stop': 0.8, 'target': 1.5},
+                        'WEAK_DOWNTREND': {'stop': 1.0, 'target': 2.0},
+                        'STRONG_DOWNTREND': {'stop': 1.2, 'target': 2.5},
+                        'HIGH_VOLATILITY': {'stop': 1.5, 'target': 2.0}
+                    }
+                    
+                    multipliers = regime_multipliers.get(self.current_market_regime, {'stop': 1.0, 'target': 2.0})
+                    
+                    if action == 'BUY':
+                        stop_loss_price = price - (atr * multipliers['stop'])
+                        take_profit_price = price + (atr * multipliers['target'])
+                    else:  # SELL
+                        stop_loss_price = price + (atr * multipliers['stop'])
+                        take_profit_price = price - (atr * multipliers['target'])
+                    
+                    logger.info(f"🔥 ATR-BASED STOPS: ATR={atr:.2f} ({atr_pct:.2f}%), Regime={self.current_market_regime}")
+                    logger.info(f"   Stop Multiplier: {multipliers['stop']}x, Target Multiplier: {multipliers['target']}x")
+                else:
+                    # Fallback to strategy defaults
+                    if action == 'BUY':
+                        stop_loss_price = price * (1 - strategy['stop_loss'])
+                        take_profit_price = price * (1 + strategy['take_profit'])
+                    else:
+                        stop_loss_price = price * (1 + strategy['stop_loss'])
+                        take_profit_price = price * (1 - strategy['take_profit'])
+                
                 # 🔥 NOW PLACE ORDER (last step after all prep is done)
                 if LIVE_TRADING_MODE:
                     # 🔴 LIVE TRADING: Place REAL order on Binance!
@@ -2741,8 +3105,8 @@ class UltimateHybridBot:
                     'quantity': quantity,
                     'entry_price': exec_price,
                     'entry_time': datetime.now(),
-                    'stop_loss': exec_price * (1 - strategy['stop_loss']) if action == 'BUY' else exec_price * (1 + strategy['stop_loss']),
-                    'take_profit': exec_price * (1 + strategy['take_profit']) if action == 'BUY' else exec_price * (1 - strategy['take_profit']),
+                    'stop_loss': stop_loss_price,  # 🔥 BUSS V2: ATR-based!
+                    'take_profit': take_profit_price,  # 🔥 BUSS V2: ATR-based!
                     'reason': reason,
                     'confidence': confidence,
                     'market_condition': market_condition,
@@ -2923,11 +3287,20 @@ class UltimateHybridBot:
                     'take_profit': position['take_profit'],
                     'position_key': position_key
                 }
+                # 🔧 FIX: Thread-safe trades list append with memory cap
+                # This prevents race conditions when Flask reads trades simultaneously
                 self.trades.append(trade)
                 
                 # 🎯 OPTIMIZATION: Prevent memory leak - cap trades list at 1000
                 if len(self.trades) > 1000:
                     self.trades = self.trades[-1000:]
+                
+                # 🔥 BUSS V2: UPDATE EPRU AFTER EACH TRADE! 🔥
+                entry_value = position['quantity'] * position['entry_price']
+                self.update_epru(pnl, entry_value)  # Track profit per risk unit
+                
+                # 🔥 BUSS V2: FEEDBACK LOOP REVIEW (Every 20 Trades)! 🔥
+                self.feedback_loop_review()  # Auto-adjusts system based on performance
                 
                 # Update analytics
                 date_str = datetime.now().strftime('%Y-%m-%d')
@@ -3277,13 +3650,39 @@ class UltimateHybridBot:
     def run_trading_cycle(self):
         """Main trading logic with dynamic capital allocation"""
         try:
+            # 🔥 BUSS V2: CALCULATE MARKET HEALTH INDEX! 🔥
+            self.calculate_mhi()
+            
             # 🚀 DYNAMIC CAPITAL ALLOCATION: Analyze market regime first!
             logger.info("\n" + "="*70)
             logger.info("🎯 ANALYZING MARKET REGIME...")
             logger.info("="*70)
             
             self.current_market_regime = self.analyze_market_regime()
+            
+            # 🔥 BUSS V2: DETECT MARKET TRANSITIONS! 🔥
+            self.detect_market_transition()
+            
+            # 🔥 BUSS V2: ADD TO MARKET MEMORY! 🔥
+            self.market_memory.append({
+                'timestamp': datetime.now(),
+                'regime': self.current_market_regime,
+                'mhi': self.mhi,
+                'capital': self.current_capital + self.reserved_capital
+            })
+            
             self.capital_adjustments = self.adjust_capital_allocation(self.current_market_regime)
+            
+            # 🔥 BUSS V2: CALCULATE DYNAMIC EXPOSURE! 🔥
+            self.calculate_dynamic_exposure()
+            
+            # 🔥 BUSS V2: CHECK SELF-REGULATION! 🔥
+            regulation_state = self.check_self_regulation()
+            if regulation_state in ['PAUSED', 'EMERGENCY']:
+                logger.warning(f"🚨 SELF-REGULATION: {regulation_state} - Skipping new trades!")
+                self.manage_positions()
+                self.print_status()
+                return
             
             # 🔧 CRITICAL SAFETY: Daily Loss Limit Protection (Including Unrealized P&L)
             DAILY_LOSS_LIMIT = 200  # $200 max loss per day
@@ -3435,11 +3834,11 @@ class UltimateHybridBot:
                     all_signals.sort(reverse=True, key=lambda x: x[0])  # Sort by score
                     best_score, best_strategy, best_signal = all_signals[0]
                     
-                    logger.debug(f"📊 {symbol}: Found {len(all_signals)} signals, picked {best_strategy} (score: {best_score:.2f})")
+                    logger.info(f"💡 {symbol}: Found {len(all_signals)} signals, picked {best_strategy} (confidence: {best_signal['confidence']:.1f}%, score: {best_score:.2f})")
                     
                     # 🎯 ADAPTIVE CONFIDENCE: Check if signal meets current threshold
                     if best_signal['confidence'] < current_threshold:
-                        logger.debug(f"⏸️ {symbol}: Confidence {best_signal['confidence']}% < threshold {current_threshold}%, skipping")
+                        logger.info(f"⏸️ {symbol}: Confidence {best_signal['confidence']:.1f}% < threshold {current_threshold:.1f}%, skipping")
                         continue
                     
                     # Try to open position with BEST signal
@@ -3463,13 +3862,18 @@ class UltimateHybridBot:
     
     def print_status(self):
         """Print current status"""
+        # 🔧 FIX: Thread-safe access to trades count
+        with self.data_lock:
+            trades_count = len(self.trades)
+            positions_count = len(self.positions)
+        
         logger.info(f"\n{'='*70}")
         logger.info(f"📊 STATUS REPORT")
         logger.info(f"{'='*70}")
         logger.info(f"💰 Capital: ${self.current_capital:.2f} | Reserved: ${self.reserved_capital:.2f}")
         logger.info(f"📈 P&L: ${self.current_capital + self.reserved_capital - self.initial_capital:.2f}")
-        logger.info(f"📊 Open Positions: {len(self.positions)}")
-        logger.info(f"📝 Total Trades: {len(self.trades)}")
+        logger.info(f"📊 Open Positions: {positions_count}")
+        logger.info(f"📝 Total Trades: {trades_count}")
         
         if self.positions:
             logger.info(f"\n🎯 OPEN POSITIONS:")
@@ -3634,6 +4038,19 @@ def get_stats():
                 'max_position_size': LIVE_MAX_POSITION_SIZE_USD if LIVE_TRADING_MODE else None,
                 'max_total_risk': LIVE_MAX_TOTAL_CAPITAL_RISK if LIVE_TRADING_MODE else None,
                 'daily_loss_limit': LIVE_DAILY_LOSS_LIMIT if LIVE_TRADING_MODE else None
+            },
+            # 🔥 BUSS V2 STATS! 🔥
+            'buss_v2': {
+                'epru': trading_bot.epru,
+                'mhi': trading_bot.mhi,
+                'dynamic_exposure': trading_bot.current_exposure * 100,  # Convert to %
+                'regulation_state': trading_bot.regulation_state,
+                'market_memory_size': len(trading_bot.market_memory),
+                'transition_count': trading_bot.transition_count,
+                'base_threshold': trading_bot.base_confidence_threshold,
+                'current_threshold': trading_bot.current_confidence_threshold,
+                'avg_win': trading_bot.avg_win,
+                'avg_loss': trading_bot.avg_loss
             },
             'features': {
                 'grid_trading': True,
@@ -3832,8 +4249,12 @@ def get_analytics():
         return jsonify({'error': 'Bot not initialized'})
     
     try:
-        wins = sum(1 for t in trading_bot.trades if t.get('pnl', 0) > 0)
-        total_trades = len([t for t in trading_bot.trades if 'pnl' in t])
+        # 🔧 FIX: Thread-safe access to trades list
+        with trading_bot.data_lock:
+            trades_snapshot = list(trading_bot.trades)
+        
+        wins = sum(1 for t in trades_snapshot if t.get('pnl', 0) > 0)
+        total_trades = len([t for t in trades_snapshot if 'pnl' in t])
         win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
         total_pnl = trading_bot.current_capital + trading_bot.reserved_capital - trading_bot.initial_capital
         
@@ -3906,8 +4327,12 @@ def get_validation():
     if not trading_bot:
         return jsonify({'ready': False, 'error': 'Bot not initialized'})
     
-    wins = sum(1 for t in trading_bot.trades if t.get('pnl', 0) > 0)
-    total_trades = len([t for t in trading_bot.trades if 'pnl' in t])
+    # 🔧 FIX: Thread-safe access to trades list
+    with trading_bot.data_lock:
+        trades_snapshot = list(trading_bot.trades)
+    
+    wins = sum(1 for t in trades_snapshot if t.get('pnl', 0) > 0)
+    total_trades = len([t for t in trades_snapshot if 'pnl' in t])
     win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
     total_pnl = trading_bot.current_capital + trading_bot.reserved_capital - trading_bot.initial_capital
     
