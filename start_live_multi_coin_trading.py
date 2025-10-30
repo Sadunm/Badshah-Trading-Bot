@@ -19,7 +19,7 @@ import hashlib
 from urllib.parse import urlencode
 from datetime import datetime, timedelta
 from threading import Thread, Lock  # 🔧 FIX: Added Lock for thread safety
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, request, Response
 from collections import defaultdict, deque  # 🎯 OPTIMIZATION: Added deque for efficient memory management
 from decimal import Decimal, ROUND_DOWN  # 🔥 For precise quantity formatting
 
@@ -39,36 +39,70 @@ if sys.platform == 'win32':
     except Exception:
         pass  # If this fails, emojis will show as '?' but bot will still work
 
-# Setup logging with TIMESTAMPED FILES for 4-hour debugging sessions
+# ============================================================================
+# RENDER-FRIENDLY IN-MEMORY LOGGING SYSTEM
+# ============================================================================
+# Since Render's filesystem is ephemeral, we store recent logs in memory
+# and make them accessible via dashboard API
+
 from logging.handlers import RotatingFileHandler
+import logging.handlers
+
+class InMemoryLogHandler(logging.Handler):
+    """Custom handler that stores recent logs in memory for Render deployment"""
+    def __init__(self, max_lines=10000):
+        super().__init__()
+        self.max_lines = max_lines
+        self.logs = deque(maxlen=max_lines)  # Auto-removes old logs
+        self.lock = Lock()  # Thread-safe
+    
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            with self.lock:
+                self.logs.append({
+                    'timestamp': datetime.fromtimestamp(record.created).isoformat(),
+                    'level': record.levelname,
+                    'message': msg
+                })
+        except Exception:
+            self.handleError(record)
+    
+    def get_logs(self, last_n=500):
+        """Get last N log entries"""
+        with self.lock:
+            return list(self.logs)[-last_n:]
+    
+    def get_logs_as_text(self):
+        """Get all logs as downloadable text"""
+        with self.lock:
+            return '\n'.join([f"{log['timestamp']} - {log['level']} - {log['message']}" for log in self.logs])
+
+# Create in-memory log buffer (survives for session duration)
+memory_log_handler = InMemoryLogHandler(max_lines=10000)  # Store last 10,000 logs
+memory_log_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
 # Create session-specific log filename with timestamp
 log_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 session_log_file = f'logs/session_{log_timestamp}.log'
-debug_log_file = f'logs/debug_{log_timestamp}.log'
 
 # Configure logging with multiple handlers
 logging.basicConfig(
-    level=logging.DEBUG,  # Capture ALL logs (DEBUG level)
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        # Main session log (INFO level, 50MB max, keeps 3 backups)
+        # 🔥 IN-MEMORY HANDLER (Primary for Render)
+        memory_log_handler,
+        # File handler (works on Render but gets cleared on restart)
         RotatingFileHandler(
             session_log_file, 
-            maxBytes=50*1024*1024,  # 50 MB
-            backupCount=3,
-            encoding='utf-8'
-        ),
-        # Debug log (DEBUG level, 100MB max, keeps 2 backups)
-        RotatingFileHandler(
-            debug_log_file,
-            maxBytes=100*1024*1024,  # 100 MB
-            backupCount=2,
+            maxBytes=10*1024*1024,  # 10 MB (smaller for Render)
+            backupCount=1,
             encoding='utf-8'
         ),
         # Old general log for backward compatibility
         logging.FileHandler('logs/multi_coin_trading.log', encoding='utf-8'),
-        # Console output (INFO level only)
+        # Console output (Render captures this in their logs viewer)
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -77,10 +111,11 @@ logger = logging.getLogger(__name__)
 
 # Log the session start
 logger.info("="*80)
-logger.info(f"🚀 NEW TRADING SESSION STARTED")
-logger.info(f"📝 Session Logs: {session_log_file}")
-logger.info(f"🔍 Debug Logs: {debug_log_file}")
-logger.info(f"⏰ Logs will be saved for debugging (4+ hours minimum)")
+logger.info(f"🚀 NEW TRADING SESSION STARTED (RENDER DEPLOYMENT)")
+logger.info(f"📝 In-Memory Logs: 10,000 lines buffer (accessible via dashboard)")
+logger.info(f"📁 Session File: {session_log_file} (temporary)")
+logger.info(f"⏰ Logs saved in memory for entire session duration")
+logger.info(f"💡 View logs at: http://localhost:10000/api/logs")
 logger.info("="*80)
 
 # 🔥 MULTIPLE API KEYS FOR LOAD DISTRIBUTION 🔥
@@ -4175,37 +4210,56 @@ def get_positions():
 
 @app.route('/api/logs')
 def get_logs():
-    """Get recent log entries with better formatting"""
+    """Get recent log entries from in-memory buffer (Render-friendly)"""
     try:
-        log_file = 'logs/multi_coin_trading.log'
-        if os.path.exists(log_file):
-            with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
-                # Return last 200 lines (more logs!)
-                recent_logs = [line.strip() for line in lines[-200:] if line.strip()]
-                return jsonify({
-                    'logs': recent_logs,
-                    'count': len(recent_logs),
-                    'timestamp': datetime.now().isoformat()
-                })
-        else:
-            # Log file doesn't exist yet
-            return jsonify({
-                'logs': [
-                    f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - INFO - 🔥 Bot starting...',
-                    f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - INFO - 📊 Scanning markets...',
-                    f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - INFO - 🔍 Looking for opportunities...'
-                ],
-                'count': 3,
-                'timestamp': datetime.now().isoformat()
-            })
+        # Get number of logs requested (default 500)
+        count = int(request.args.get('count', 500))
+        
+        # Get logs from in-memory handler
+        recent_logs = memory_log_handler.get_logs(last_n=count)
+        
+        # Format for frontend
+        formatted_logs = []
+        for log in recent_logs:
+            # Extract just the message part after the timestamp and level
+            message = log['message']
+            formatted_logs.append(message)
+        
+        return jsonify({
+            'logs': formatted_logs,
+            'count': len(formatted_logs),
+            'total_buffered': len(memory_log_handler.logs),
+            'timestamp': datetime.now().isoformat(),
+            'source': 'in-memory-buffer'
+        })
     except Exception as e:
         logger.error(f"Error reading logs: {e}")
         return jsonify({
             'logs': [f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - ERROR - Failed to read logs: {str(e)}'],
             'count': 1,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'source': 'error'
         })
+
+@app.route('/api/logs/download')
+def download_logs():
+    """Download all logs as a text file (Render-friendly)"""
+    try:
+        # Get all logs as text
+        logs_text = memory_log_handler.get_logs_as_text()
+        
+        # Create downloadable file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'trading_logs_{timestamp}.txt'
+        
+        return Response(
+            logs_text,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
+    except Exception as e:
+        logger.error(f"Error downloading logs: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/trade-history')
 def get_trade_history():
@@ -4969,9 +5023,61 @@ def dashboard():
                 <div class="section">
                     <div class="section-title">
                         <span>📝</span>
-                        <span>Live Trading Logs</span>
+                        <span>Live Trading Logs (In-Memory Buffer)</span>
                     </div>
-                    <div class="logs-container" id="logs-container"></div>
+                    
+                    <!-- Log Controls -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 10px;">
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <button onclick="refreshLogs()" style="
+                                padding: 10px 20px;
+                                background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+                                border: none;
+                                border-radius: 8px;
+                                color: white;
+                                font-weight: bold;
+                                cursor: pointer;
+                                font-size: 1em;
+                            ">🔄 Refresh</button>
+                            
+                            <button onclick="window.open('/api/logs/download', '_blank')" style="
+                                padding: 10px 20px;
+                                background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+                                border: none;
+                                border-radius: 8px;
+                                color: white;
+                                font-weight: bold;
+                                cursor: pointer;
+                                font-size: 1em;
+                            ">💾 Download All Logs</button>
+                            
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="auto-refresh-logs" checked style="width: 18px; height: 18px; cursor: pointer;">
+                                <span>Auto-refresh (10s)</span>
+                            </label>
+                        </div>
+                        
+                        <div style="font-size: 0.9em; opacity: 0.7;">
+                            Total buffered: <span id="log-buffer-count" style="font-weight: bold; color: #3b82f6;">0</span> lines
+                        </div>
+                    </div>
+                    
+                    <!-- Logs Display -->
+                    <div class="logs-container" id="logs-container" style="
+                        max-height: 600px;
+                        overflow-y: auto;
+                        background: #000;
+                        padding: 20px;
+                        border-radius: 10px;
+                        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                        font-size: 0.9em;
+                        line-height: 1.6;
+                        border: 2px solid rgba(59, 130, 246, 0.3);
+                    ">
+                        <div style="text-align: center; padding: 40px; color: #666;">
+                            📝 Loading logs...
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -5701,6 +5807,86 @@ def dashboard():
                     })
                     .catch(err => console.error('Error fetching analytics:', err));
             }
+            
+            // 🔥 LOG VIEWER FUNCTIONS (RENDER-FRIENDLY)
+            function updateLogs() {
+                fetch('/api/logs?count=500')
+                    .then(r => r.json())
+                    .then(data => {
+                        const logsContainer = document.getElementById('logs-container');
+                        const bufferCount = document.getElementById('log-buffer-count');
+                        
+                        // Update buffer count
+                        if (bufferCount && data.total_buffered) {
+                            bufferCount.textContent = data.total_buffered;
+                        }
+                        
+                        // Format and display logs
+                        if (data.logs && data.logs.length > 0) {
+                            let html = '';
+                            data.logs.forEach(log => {
+                                // Color code based on log level
+                                let color = '#ccc';
+                                if (log.includes('ERROR')) color = '#f87171';
+                                else if (log.includes('WARNING')) color = '#fbbf24';
+                                else if (log.includes('✅')) color = '#4ade80';
+                                else if (log.includes('🚀')) color = '#60a5fa';
+                                else if (log.includes('💰')) color = '#22c55e';
+                                else if (log.includes('❌')) color = '#ef4444';
+                                else if (log.includes('⏸️')) color = '#fbbf24';
+                                
+                                html += `<div style="color: ${color}; margin: 3px 0;">${escapeHtml(log)}</div>`;
+                            });
+                            logsContainer.innerHTML = html;
+                            
+                            // Auto-scroll to bottom
+                            logsContainer.scrollTop = logsContainer.scrollHeight;
+                        } else {
+                            logsContainer.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">No logs yet...</div>';
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error fetching logs:', err);
+                        document.getElementById('logs-container').innerHTML = `
+                            <div style="text-align: center; padding: 40px; color: #f87171;">
+                                ❌ Error loading logs: ${err.message}
+                            </div>
+                        `;
+                    });
+            }
+            
+            function refreshLogs() {
+                updateLogs();
+            }
+            
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+            
+            // Auto-refresh logs control
+            let logsRefreshInterval = null;
+            document.addEventListener('DOMContentLoaded', function() {
+                const autoRefreshCheckbox = document.getElementById('auto-refresh-logs');
+                if (autoRefreshCheckbox) {
+                    autoRefreshCheckbox.addEventListener('change', function() {
+                        if (this.checked) {
+                            if (!logsRefreshInterval) {
+                                logsRefreshInterval = setInterval(updateLogs, 10000); // 10s
+                            }
+                        } else {
+                            if (logsRefreshInterval) {
+                                clearInterval(logsRefreshInterval);
+                                logsRefreshInterval = null;
+                            }
+                        }
+                    });
+                    
+                    // Start auto-refresh by default
+                    logsRefreshInterval = setInterval(updateLogs, 10000); // 10s
+                }
+            });
             
             // Update all data
             function updateAll() {
