@@ -601,10 +601,10 @@ class UltimateHybridBot:
         self.symbol_blacklist = set()  # Symbols to avoid
         self.blacklist_cooldown = {}  # {symbol: cooldown_until_datetime}
         
-        # 🎯 ADAPTIVE CONFIDENCE SYSTEM - 🔥 ULTRA AGGRESSIVE! 🔥
+        # 🎯 ADAPTIVE CONFIDENCE SYSTEM - 🔥🔥🔥 EXTREME AGGRESSIVE! 🔥🔥🔥
         self.recent_trades_window = deque(maxlen=20)  # Last 20 trades (win/loss only)
-        self.base_confidence_threshold = 25  # 25% - SUPER AGGRESSIVE! WAY MORE trades!
-        self.current_confidence_threshold = 25  # Start super aggressive!
+        self.base_confidence_threshold = 10  # 10% - EXTREME! TRADES WILL HAPPEN!
+        self.current_confidence_threshold = 10  # Start EXTREME aggressive!
         
         # 🔥 BUSS V2: EPRU-BASED LEARNING SYSTEM 🔥
         self.epru = 1.0  # Expected Profit per Risk Unit (target: > 1.0)
@@ -2592,25 +2592,25 @@ class UltimateHybridBot:
         ind = data['indicators']
         price = data['price']
         
-        # 🔥🔥🔥 ULTRA SUPER AGGRESSIVE: LOWEST FILTERS EVER! 🔥🔥🔥
-        # Volume: Accept even 30% of average! (was 0.8)
-        if ind['volume_ratio'] < 0.3:
-            logger.info(f"❌ {symbol} SCALP: Volume too low ({ind['volume_ratio']:.2f} < 0.3)")
+        # 🔥🔥🔥 EXTREME AGGRESSIVE: NO FILTERS! ALWAYS TRADE! 🔥🔥🔥
+        # Volume: Accept ANYTHING above 10%! (was 0.3)
+        if ind['volume_ratio'] < 0.1:
+            logger.info(f"❌ {symbol} SCALP: Volume too low ({ind['volume_ratio']:.2f} < 0.1)")
             return None
         
-        # ATR: Accept even 0.1%! (was 0.5)
-        if ind['atr_pct'] < 0.1:
-            logger.info(f"❌ {symbol} SCALP: ATR too low ({ind['atr_pct']:.2f}% < 0.1%)")
+        # ATR: Accept even 0.01%! (was 0.1)
+        if ind['atr_pct'] < 0.01:
+            logger.info(f"❌ {symbol} SCALP: ATR too low ({ind['atr_pct']:.2f}% < 0.01%)")
             return None
         
-        # 🔥 ULTRA WIDE RSI RANGE: 35-65 (was 45-55!)
-        if ind['rsi'] < 48:  # Below neutral = BUY DIP!
-            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=40)  # Lower base!
+        # 🔥 EXTREME WIDE RSI: 20-80! ALWAYS signal!
+        if ind['rsi'] < 55:  # Almost always = BUY!
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=25)  # Very low base!
             logger.info(f"✅ {symbol} SCALP BUY: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
             return {'action': 'BUY', 'reason': 'Scalping Dip', 'confidence': confidence}
         
-        if ind['rsi'] > 52:  # Above neutral = SELL PUMP!
-            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=40)  # Lower base!
+        if ind['rsi'] > 45:  # Almost always = SELL! (overlaps with BUY = more signals!)
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=25)  # Very low base!
             logger.info(f"✅ {symbol} SCALP SELL: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
             return {'action': 'SELL', 'reason': 'Scalping Pump', 'confidence': confidence}
         
@@ -2621,29 +2621,29 @@ class UltimateHybridBot:
         """DAY TRADING: 1-8 hour holds on volatility"""
         ind = data['indicators']
         
-        # 🔥🔥🔥 ULTRA SUPER AGGRESSIVE: MINIMUM FILTERS! 🔥🔥🔥
-        # Volume: Accept even 25% of average! (was 0.7)
-        if ind['volume_ratio'] < 0.25:
-            logger.info(f"❌ {symbol} DAY: Volume too low ({ind['volume_ratio']:.2f} < 0.25)")
+        # 🔥🔥🔥 EXTREME AGGRESSIVE: MINIMAL FILTERS! 🔥🔥🔥
+        # Volume: Accept even 10%! (was 0.25)
+        if ind['volume_ratio'] < 0.1:
+            logger.info(f"❌ {symbol} DAY: Volume too low ({ind['volume_ratio']:.2f} < 0.1)")
             return None
         
-        # ATR: Accept even 0.08%! (was 0.3)
-        if ind['atr_pct'] < 0.08:
-            logger.info(f"❌ {symbol} DAY: ATR too low ({ind['atr_pct']:.2f}% < 0.08%)")
+        # ATR: Accept even 0.01%! (was 0.08)
+        if ind['atr_pct'] < 0.01:
+            logger.info(f"❌ {symbol} DAY: ATR too low ({ind['atr_pct']:.2f}% < 0.01%)")
             return None
         
-        # 🔥 RELAXED TREND: Just need ANY trend direction!
-        if ind['ema_9'] > ind['ema_21'] and ind['rsi'] < 55:  # Uptrend + not overbought
-            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=38)  # Lower base!
-            logger.info(f"✅ {symbol} DAY BUY: EMA Uptrend, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
-            return {'action': 'BUY', 'reason': 'Day Trade Uptrend', 'confidence': confidence}
+        # 🔥 ALWAYS TRADE: Accept ANY position!
+        if ind['rsi'] < 60:  # Almost always BUY!
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=20)  # Very low!
+            logger.info(f"✅ {symbol} DAY BUY: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
+            return {'action': 'BUY', 'reason': 'Day Trade', 'confidence': confidence}
         
-        if ind['ema_9'] < ind['ema_21'] and ind['rsi'] > 45:  # Downtrend + not oversold
-            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=38)  # Lower base!
-            logger.info(f"✅ {symbol} DAY SELL: EMA Downtrend, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
-            return {'action': 'SELL', 'reason': 'Day Trade Downtrend', 'confidence': confidence}
+        if ind['rsi'] > 40:  # Almost always SELL!
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=20)  # Very low!
+            logger.info(f"✅ {symbol} DAY SELL: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
+            return {'action': 'SELL', 'reason': 'Day Trade', 'confidence': confidence}
         
-        logger.info(f"⏸️ {symbol} DAY: No clear trend, no signal")
+        logger.info(f"⏸️ {symbol} DAY: RSI extreme ({ind['rsi']:.1f}), no signal")
         return None
     
     def generate_swing_trading_signal(self, symbol, data):
@@ -2726,26 +2726,26 @@ class UltimateHybridBot:
         """MOMENTUM: Ride strong trends"""
         ind = data['indicators']
         
-        # 🔥🔥🔥 ULTRA SUPER AGGRESSIVE: MINIMUM FILTERS! 🔥🔥🔥
-        # Volume: Accept even 20% of average! (was 0.6)
-        if ind['volume_ratio'] < 0.2:
-            logger.info(f"❌ {symbol} MOMENTUM: Volume too low ({ind['volume_ratio']:.2f} < 0.2)")
+        # 🔥🔥🔥 EXTREME AGGRESSIVE: ACCEPT EVERYTHING! 🔥🔥🔥
+        # Volume: Accept even 10%! (was 0.2)
+        if ind['volume_ratio'] < 0.1:
+            logger.info(f"❌ {symbol} MOMENTUM: Volume too low ({ind['volume_ratio']:.2f} < 0.1)")
             return None
         
-        # Momentum: Accept even 0.3%! (was 1.0)
-        if abs(ind['momentum_10']) < 0.3:
-            logger.info(f"⏸️ {symbol} MOMENTUM: Too flat ({ind['momentum_10']:.2f}% < 0.3%)")
+        # Momentum: Accept even 0.1%! (was 0.3)
+        if abs(ind['momentum_10']) < 0.1:
+            logger.info(f"⏸️ {symbol} MOMENTUM: Too flat ({ind['momentum_10']:.2f}% < 0.1%)")
             return None
         
-        # 🔥 ULTRA EASY: Just need ANY momentum direction!
-        if ind['momentum_10'] > 0.3 and ind['rsi'] < 75:  # Not extremely overbought
-            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=35)  # Lower base!
+        # 🔥 ALWAYS TRADE: ANY tiny movement!
+        if ind['momentum_10'] > 0.1:  # Even tiny upward movement!
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=20)  # Very low!
             logger.info(f"✅ {symbol} MOMENTUM BUY: Mom={ind['momentum_10']:.2f}%, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
             return {'action': 'BUY', 'reason': 'Momentum Up', 'confidence': confidence}
         
-        # 🔥 ULTRA EASY: Just need ANY downward momentum!
-        if ind['momentum_10'] < -0.3 and ind['rsi'] > 25:  # Not extremely oversold
-            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=35)  # Lower base!
+        # 🔥 ALWAYS TRADE: ANY tiny downward movement!
+        if ind['momentum_10'] < -0.1:  # Even tiny downward movement!
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=20)  # Very low!
             logger.info(f"✅ {symbol} MOMENTUM SELL: Mom={ind['momentum_10']:.2f}%, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
             return {'action': 'SELL', 'reason': 'Momentum Down', 'confidence': confidence}
         
