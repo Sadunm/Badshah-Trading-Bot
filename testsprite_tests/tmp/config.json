@@ -1,0 +1,7 @@
+{
+  "status": "commited",
+  "type": "backend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:10000/api/stats",
+  "backendAuthType": "public"
+}

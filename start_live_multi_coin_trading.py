@@ -2606,13 +2606,13 @@ class UltimateHybridBot:
         # 🔥 EXTREME WIDE RSI: 20-80! ALWAYS signal!
         if ind['rsi'] < 55:  # Almost always = BUY!
             confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=25)  # Very low base!
-            logger.info(f"✅ {symbol} SCALP BUY: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
-            return {'action': 'BUY', 'reason': 'Scalping Dip', 'confidence': confidence}
+            logger.info(f"✅ {symbol} SCALP BUY: RSI={ind['rsi']:.1f}, Conf={confidence*100:.1f}%")
+            return {'action': 'BUY', 'reason': 'Scalping Dip', 'confidence': confidence*100}  # Return as %
         
         if ind['rsi'] > 45:  # Almost always = SELL! (overlaps with BUY = more signals!)
             confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=25)  # Very low base!
-            logger.info(f"✅ {symbol} SCALP SELL: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
-            return {'action': 'SELL', 'reason': 'Scalping Pump', 'confidence': confidence}
+            logger.info(f"✅ {symbol} SCALP SELL: RSI={ind['rsi']:.1f}, Conf={confidence*100:.1f}%")
+            return {'action': 'SELL', 'reason': 'Scalping Pump', 'confidence': confidence*100}  # Return as %
         
         logger.info(f"⏸️ {symbol} SCALP: RSI neutral ({ind['rsi']:.1f}), no signal")
         return None
@@ -2635,13 +2635,13 @@ class UltimateHybridBot:
         # 🔥 ALWAYS TRADE: Accept ANY position!
         if ind['rsi'] < 60:  # Almost always BUY!
             confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=20)  # Very low!
-            logger.info(f"✅ {symbol} DAY BUY: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
-            return {'action': 'BUY', 'reason': 'Day Trade', 'confidence': confidence}
+            logger.info(f"✅ {symbol} DAY BUY: RSI={ind['rsi']:.1f}, Conf={confidence*100:.1f}%")
+            return {'action': 'BUY', 'reason': 'Day Trade', 'confidence': confidence*100}  # Return as %
         
         if ind['rsi'] > 40:  # Almost always SELL!
             confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=20)  # Very low!
-            logger.info(f"✅ {symbol} DAY SELL: RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
-            return {'action': 'SELL', 'reason': 'Day Trade', 'confidence': confidence}
+            logger.info(f"✅ {symbol} DAY SELL: RSI={ind['rsi']:.1f}, Conf={confidence*100:.1f}%")
+            return {'action': 'SELL', 'reason': 'Day Trade', 'confidence': confidence*100}  # Return as %
         
         logger.info(f"⏸️ {symbol} DAY: RSI extreme ({ind['rsi']:.1f}), no signal")
         return None
@@ -2740,14 +2740,14 @@ class UltimateHybridBot:
         # 🔥 ALWAYS TRADE: ANY tiny movement!
         if ind['momentum_10'] > 0.1:  # Even tiny upward movement!
             confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=20)  # Very low!
-            logger.info(f"✅ {symbol} MOMENTUM BUY: Mom={ind['momentum_10']:.2f}%, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
-            return {'action': 'BUY', 'reason': 'Momentum Up', 'confidence': confidence}
+            logger.info(f"✅ {symbol} MOMENTUM BUY: Mom={ind['momentum_10']:.2f}%, RSI={ind['rsi']:.1f}, Conf={confidence*100:.1f}%")
+            return {'action': 'BUY', 'reason': 'Momentum Up', 'confidence': confidence*100}  # Return as %
         
         # 🔥 ALWAYS TRADE: ANY tiny downward movement!
         if ind['momentum_10'] < -0.1:  # Even tiny downward movement!
             confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=20)  # Very low!
-            logger.info(f"✅ {symbol} MOMENTUM SELL: Mom={ind['momentum_10']:.2f}%, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
-            return {'action': 'SELL', 'reason': 'Momentum Down', 'confidence': confidence}
+            logger.info(f"✅ {symbol} MOMENTUM SELL: Mom={ind['momentum_10']:.2f}%, RSI={ind['rsi']:.1f}, Conf={confidence*100:.1f}%")
+            return {'action': 'SELL', 'reason': 'Momentum Down', 'confidence': confidence*100}  # Return as %
         
         return None
     
