@@ -591,8 +591,8 @@ class UltimateHybridBot:
         
         # 🎯 ADAPTIVE CONFIDENCE SYSTEM
         self.recent_trades_window = deque(maxlen=20)  # Last 20 trades (win/loss only)
-        self.base_confidence_threshold = 70  # Base minimum confidence
-        self.current_confidence_threshold = 70  # Dynamically adjusted
+        self.base_confidence_threshold = 45  # Base minimum confidence (PAPER: 45%, LIVE: increase to 60%)
+        self.current_confidence_threshold = 45  # Dynamically adjusted (LOWERED for paper trading!)
         
         # Capital management
         self.initial_capital = initial_capital
@@ -840,20 +840,20 @@ class UltimateHybridBot:
         # Adjust confidence threshold based on recent performance
         if recent_win_rate >= 65:
             # 🎉 EXCELLENT performance! Lower threshold to capture more opportunities
-            self.current_confidence_threshold = 60
-            logger.info(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → LOWERED threshold to 60% (more aggressive!)")
+            self.current_confidence_threshold = 40
+            logger.info(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → LOWERED threshold to 40% (more aggressive!)")
         elif recent_win_rate >= 55:
             # ✅ GOOD performance! Use base threshold
-            self.current_confidence_threshold = 70
-            logger.debug(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → Base threshold 70%")
+            self.current_confidence_threshold = 45
+            logger.debug(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → Base threshold 45%")
         elif recent_win_rate >= 45:
             # ⚠️ MEDIOCRE performance! Raise threshold slightly
-            self.current_confidence_threshold = 75
-            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → RAISED threshold to 75% (more selective!)")
+            self.current_confidence_threshold = 55
+            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → RAISED threshold to 55% (more selective!)")
         else:
             # 🚨 POOR performance! Raise threshold significantly
-            self.current_confidence_threshold = 85
-            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → RAISED threshold to 85% (VERY selective!)")
+            self.current_confidence_threshold = 65
+            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → RAISED threshold to 65% (VERY selective!)")
         
         return self.current_confidence_threshold
     
