@@ -4,13 +4,15 @@ services:
     env: docker
     dockerfilePath: ./Dockerfile
     region: oregon
-    plan: free
+    plan: starter
     envVars:
       - key: PYTHONUNBUFFERED
-        value: 1
+        value: "1"
       - key: TZ
         value: UTC
       - key: LIVE_TRADING_MODE
-        value: false
+        value: "false"
+      - key: PORT
+        value: "10000"
     healthCheckPath: /health
     autoDeploy: true

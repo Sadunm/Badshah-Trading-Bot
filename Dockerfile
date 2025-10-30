@@ -41,6 +41,10 @@ RUN mkdir -p /app/logs /app/reports /app/data
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV TZ=UTC
+ENV PORT=10000
+
+# Expose port for health check
+EXPOSE 10000
 
 # Run the bot
 CMD ["python", "-u", "start_live_multi_coin_trading.py"]
