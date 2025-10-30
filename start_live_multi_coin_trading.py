@@ -675,7 +675,7 @@ class UltimateHybridBot:
         logger.info(f"💰 Reserved Capital: ${self.reserved_capital:.2f}")
         logger.info(f"💰 Total Portfolio: ${self.current_capital + self.reserved_capital:.2f}")
         logger.info(f"💰 P&L: ${self.current_capital + self.reserved_capital - self.initial_capital:.2f}")
-        logger.info(f"📊 Strategies: {len(STRATEGIES)}")
+        logger.info(f"🔥 Strategies: 3 ULTRA AGGRESSIVE (SCALPING, DAY_TRADING, MOMENTUM)")
         logger.info(f"🪙 Coins: {len(COIN_UNIVERSE)}")
         logger.info(f"🔑 API Keys: {len(self.api_keys)} (Rotation Enabled)")
         logger.info(f"✅ Multi-Strategy | Multi-Timeframe | Multi-Coin")
