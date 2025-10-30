@@ -2725,22 +2725,27 @@ class UltimateHybridBot:
         """MOMENTUM: Ride strong trends"""
         ind = data['indicators']
         
-        # 🔥 SUPER AGGRESSIVE: Much lower requirements!
-        if ind['volume_ratio'] < 0.6:  # Much lower! (was 1.5)
+        # 🔥🔥🔥 ULTRA SUPER AGGRESSIVE: MINIMUM FILTERS! 🔥🔥🔥
+        # Volume: Accept even 20% of average! (was 0.6)
+        if ind['volume_ratio'] < 0.2:
+            logger.info(f"❌ {symbol} MOMENTUM: Volume too low ({ind['volume_ratio']:.2f} < 0.2)")
             return None
         
-        # Lower momentum requirement
-        if abs(ind['momentum_10']) < 1.0:  # Much lower! (was 3.0)
+        # Momentum: Accept even 0.3%! (was 1.0)
+        if abs(ind['momentum_10']) < 0.3:
+            logger.info(f"⏸️ {symbol} MOMENTUM: Too flat ({ind['momentum_10']:.2f}% < 0.3%)")
             return None
         
-        # Bullish momentum (MUCH EASIER!)
-        if ind['momentum_10'] > 1.0 and ind['macd'] > ind['macd_signal'] and ind['rsi'] < 70:
-            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=62)
+        # 🔥 ULTRA EASY: Just need ANY momentum direction!
+        if ind['momentum_10'] > 0.3 and ind['rsi'] < 75:  # Not extremely overbought
+            confidence = self.calculate_signal_confidence(ind, 'BUY', base_confidence=35)  # Lower base!
+            logger.info(f"✅ {symbol} MOMENTUM BUY: Mom={ind['momentum_10']:.2f}%, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
             return {'action': 'BUY', 'reason': 'Momentum Up', 'confidence': confidence}
         
-        # Bearish momentum (MUCH EASIER!)
-        if ind['momentum_10'] < -1.0 and ind['macd'] < ind['macd_signal'] and ind['rsi'] > 30:
-            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=62)
+        # 🔥 ULTRA EASY: Just need ANY downward momentum!
+        if ind['momentum_10'] < -0.3 and ind['rsi'] > 25:  # Not extremely oversold
+            confidence = self.calculate_signal_confidence(ind, 'SELL', base_confidence=35)  # Lower base!
+            logger.info(f"✅ {symbol} MOMENTUM SELL: Mom={ind['momentum_10']:.2f}%, RSI={ind['rsi']:.1f}, Conf={confidence:.1f}%")
             return {'action': 'SELL', 'reason': 'Momentum Down', 'confidence': confidence}
         
         return None
