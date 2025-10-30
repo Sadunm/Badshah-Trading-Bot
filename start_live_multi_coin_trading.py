@@ -591,8 +591,16 @@ class UltimateHybridBot:
         
         # 🎯 ADAPTIVE CONFIDENCE SYSTEM
         self.recent_trades_window = deque(maxlen=20)  # Last 20 trades (win/loss only)
-        self.base_confidence_threshold = 45  # Base minimum confidence (PAPER: 45%, LIVE: increase to 60%)
-        self.current_confidence_threshold = 45  # Dynamically adjusted (LOWERED for paper trading!)
+        
+        # 🎯 REALISTIC THRESHOLDS: Different for Paper vs Live!
+        if LIVE_TRADING_MODE:
+            # LIVE MODE: More conservative (real money!)
+            self.base_confidence_threshold = 60  # 60% for live (balanced!)
+            self.current_confidence_threshold = 60
+        else:
+            # PAPER MODE: Slightly aggressive (testing strategies)
+            self.base_confidence_threshold = 52  # 52% for paper (realistic!)
+            self.current_confidence_threshold = 52
         
         # Capital management
         self.initial_capital = initial_capital
@@ -837,23 +845,35 @@ class UltimateHybridBot:
         total = len(self.recent_trades_window)
         recent_win_rate = (wins / total) * 100 if total > 0 else 50
         
-        # Adjust confidence threshold based on recent performance
-        if recent_win_rate >= 65:
-            # 🎉 EXCELLENT performance! Lower threshold to capture more opportunities
-            self.current_confidence_threshold = 40
-            logger.info(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → LOWERED threshold to 40% (more aggressive!)")
-        elif recent_win_rate >= 55:
-            # ✅ GOOD performance! Use base threshold
-            self.current_confidence_threshold = 45
-            logger.debug(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → Base threshold 45%")
-        elif recent_win_rate >= 45:
-            # ⚠️ MEDIOCRE performance! Raise threshold slightly
-            self.current_confidence_threshold = 55
-            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → RAISED threshold to 55% (more selective!)")
+        # 🎯 REALISTIC ADAPTIVE THRESHOLDS: Different for Paper vs Live!
+        if LIVE_TRADING_MODE:
+            # 💰 LIVE MODE: Conservative adjustments (protect real money!)
+            if recent_win_rate >= 65:
+                self.current_confidence_threshold = 55  # Still selective
+                logger.info(f"🎯 ADAPTIVE (LIVE): Win rate {recent_win_rate:.0f}% → threshold 55%")
+            elif recent_win_rate >= 55:
+                self.current_confidence_threshold = 60  # Base
+                logger.debug(f"🎯 ADAPTIVE (LIVE): Win rate {recent_win_rate:.0f}% → threshold 60%")
+            elif recent_win_rate >= 45:
+                self.current_confidence_threshold = 68  # More careful
+                logger.warning(f"🎯 ADAPTIVE (LIVE): Win rate {recent_win_rate:.0f}% → threshold 68%")
+            else:
+                self.current_confidence_threshold = 75  # Very selective
+                logger.warning(f"🎯 ADAPTIVE (LIVE): Win rate {recent_win_rate:.0f}% → threshold 75%")
         else:
-            # 🚨 POOR performance! Raise threshold significantly
-            self.current_confidence_threshold = 65
-            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → RAISED threshold to 65% (VERY selective!)")
+            # 📊 PAPER MODE: Moderate adjustments (testing strategies)
+            if recent_win_rate >= 65:
+                self.current_confidence_threshold = 48  # Slightly aggressive
+                logger.info(f"🎯 ADAPTIVE (PAPER): Win rate {recent_win_rate:.0f}% → threshold 48%")
+            elif recent_win_rate >= 55:
+                self.current_confidence_threshold = 52  # Base
+                logger.debug(f"🎯 ADAPTIVE (PAPER): Win rate {recent_win_rate:.0f}% → threshold 52%")
+            elif recent_win_rate >= 45:
+                self.current_confidence_threshold = 58  # More selective
+                logger.warning(f"🎯 ADAPTIVE (PAPER): Win rate {recent_win_rate:.0f}% → threshold 58%")
+            else:
+                self.current_confidence_threshold = 65  # Very selective
+                logger.warning(f"🎯 ADAPTIVE (PAPER): Win rate {recent_win_rate:.0f}% → threshold 65%")
         
         return self.current_confidence_threshold
     
@@ -3512,6 +3532,16 @@ class UltimateHybridBot:
         """Start the trading bot"""
         logger.info(f"\n{'='*70}")
         logger.info(f"🚀 ULTIMATE HYBRID BOT STARTING...")
+        logger.info(f"{'='*70}")
+        
+        # 🎯 SHOW MODE AND CONFIDENCE SETTINGS
+        mode = "🔴 LIVE TRADING (REAL MONEY!)" if LIVE_TRADING_MODE else "📊 PAPER TRADING (SIMULATION)"
+        logger.info(f"\n🎯 MODE: {mode}")
+        logger.info(f"💰 Initial Capital: ${self.initial_capital:.2f}")
+        logger.info(f"🎯 Base Confidence Threshold: {self.base_confidence_threshold}%")
+        logger.info(f"📊 Total Strategies: {len(STRATEGIES)}")
+        logger.info(f"🪙 Scanning {len(COIN_UNIVERSE)} coins across {len(API_KEYS)} API keys")
+        logger.info(f"⏱️  Scan Interval: 45 seconds")
         logger.info(f"{'='*70}\n")
         
         cycle = 0
