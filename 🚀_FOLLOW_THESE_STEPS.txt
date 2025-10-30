@@ -1,0 +1,61 @@
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║        🔥 FIRST TIME SETUP - SHUDHU 1 BAR 🔥                ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+
+
+📋 STEP BY STEP (5 MINUTES):
+═══════════════════════════════════════════════════════════════
+
+
+STEP 1️⃣: Install Requirements (FIRST TIME ONLY!)
+─────────────────────────────────────────────────
+Double-click করো:
+👉 INSTALL_REQUIREMENTS.bat
+
+Wait করো 2-3 minutes...
+✅ "ALL REQUIREMENTS INSTALLED!" দেখলে next step!
+
+
+STEP 2️⃣: Start Bot
+───────────────────
+Double-click করো:
+👉 START_PAPER_TRADING.bat
+
+Bot শুরু হবে!
+
+
+STEP 3️⃣: Open Dashboard
+────────────────────────
+Browser খোলো:
+👉 http://localhost:5000
+
+Trades দেখতে পারবে!
+
+
+═══════════════════════════════════════════════════════════════
+⚠️ IF ERROR:
+═══════════════════════════════════════════════════════════════
+
+Error দেখলে screenshot নাও এবং পাঠাও!
+Ami 2 minute e fix korbo!
+
+
+═══════════════════════════════════════════════════════════════
+✅ AFTER SETUP (DAILY USE):
+═══════════════════════════════════════════════════════════════
+
+Requirements install আর করতে হবে না!
+Shudhu run করো:
+👉 START_PAPER_TRADING.bat
+
+Dashboard:
+👉 http://localhost:5000
+
+
+═══════════════════════════════════════════════════════════════
+
+🎯 THAT'S IT! EKHON SHURU KORO! 🎯
+
+

@@ -601,10 +601,10 @@ class UltimateHybridBot:
         self.symbol_blacklist = set()  # Symbols to avoid
         self.blacklist_cooldown = {}  # {symbol: cooldown_until_datetime}
         
-        # 🎯 ADAPTIVE CONFIDENCE SYSTEM
+        # 🎯 ADAPTIVE CONFIDENCE SYSTEM - 🔥 ULTRA AGGRESSIVE! 🔥
         self.recent_trades_window = deque(maxlen=20)  # Last 20 trades (win/loss only)
-        self.base_confidence_threshold = 55  # 55% - BALANCED for both paper and live!
-        self.current_confidence_threshold = 55  # Not too strict, not too loose!
+        self.base_confidence_threshold = 45  # 45% - ULTRA AGGRESSIVE! More trades!
+        self.current_confidence_threshold = 45  # Start aggressive!
         
         # Capital management
         self.initial_capital = initial_capital
@@ -741,47 +741,31 @@ class UltimateHybridBot:
         
         strategy_scores = {}  # Track scores for logging
         
+        # 🔥 ULTRA AGGRESSIVE MODE - ONLY TOP 3 FASTEST STRATEGIES! 🔥
+        # User wants maximum aggression regardless of capital!
+        ULTRA_AGGRESSIVE_STRATEGIES = ['SCALPING', 'DAY_TRADING', 'MOMENTUM']
+        
         for strategy_name, strategy_config in STRATEGIES.items():
-            speed_class = strategy_config.get('speed_class', 'MEDIUM')
+            # ⚡ FORCE: Only allow ultra aggressive strategies! ⚡
+            if strategy_name not in ULTRA_AGGRESSIVE_STRATEGIES:
+                continue  # Skip all other strategies!
+            
             min_capital = strategy_config.get('min_capital', 0)
             
             # Check if we have enough capital for this strategy
             if total_equity < min_capital:
                 continue
             
-            # Filter by speed class based on total equity
-            capital_suitable = False
-            if total_equity < ULTRA_LOW_CAPITAL:
-                capital_suitable = (speed_class == 'ULTRA_FAST')
-            elif total_equity < LOW_CAPITAL:
-                capital_suitable = (speed_class in ['ULTRA_FAST', 'FAST'])
-            elif total_equity < MEDIUM_CAPITAL:
-                capital_suitable = (speed_class in ['ULTRA_FAST', 'FAST', 'MEDIUM'])
-            else:
-                capital_suitable = True
+            # Apply volatility scoring
+            vol_score = volatility_preferences.get(market_volatility, {}).get(strategy_name, 1.0)
+            strategy_scores[strategy_name] = vol_score
             
-            if capital_suitable:
-                # Apply volatility scoring
-                vol_score = volatility_preferences.get(market_volatility, {}).get(strategy_name, 1.0)
-                strategy_scores[strategy_name] = vol_score
-                
-                # Only include if score >= 0.8 (filter out badly mismatched strategies)
-                if vol_score >= 0.8:
-                    suitable.append(strategy_name)
+            # Always include ultra aggressive strategies (no 0.8 filter!)
+            suitable.append(strategy_name)
         
-        # Log strategy selection
-        if total_equity < ULTRA_LOW_CAPITAL:
-            mode = "⚡ ULTRA-AGGRESSIVE MODE"
-            desc = "Lightning-fast strategies only!"
-        elif total_equity < LOW_CAPITAL:
-            mode = "⚡ LOW CAPITAL MODE"
-            desc = "Fast strategies for quick compounding"
-        elif total_equity < MEDIUM_CAPITAL:
-            mode = "📊 BALANCED MODE"
-            desc = "Mix of fast and medium strategies"
-        else:
-            mode = "💰 HIGH CAPITAL MODE"
-            desc = "All strategies enabled"
+        # Log strategy selection - ALWAYS ULTRA AGGRESSIVE!
+        mode = "🔥 ULTRA-AGGRESSIVE MODE 🔥"
+        desc = f"Only TOP 3 fastest strategies! {', '.join(ULTRA_AGGRESSIVE_STRATEGIES)}"
         
         logger.info(f"\n{'='*70}")
         logger.info(f"🎯 STRATEGY SELECTION: {mode}")
@@ -850,18 +834,19 @@ class UltimateHybridBot:
         recent_win_rate = (wins / total) * 100 if total > 0 else 50
         
         # Adjust confidence threshold based on recent performance
+        # 🔥 ULTRA AGGRESSIVE THRESHOLDS! 🔥
         if recent_win_rate >= 65:
-            self.current_confidence_threshold = 50  # Winning! Be more aggressive
-            logger.info(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 50%")
+            self.current_confidence_threshold = 40  # Winning! MAXIMUM AGGRESSION! 🚀
+            logger.info(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 40% 🔥")
         elif recent_win_rate >= 55:
-            self.current_confidence_threshold = 55  # Good! Keep base threshold
-            logger.debug(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 55%")
+            self.current_confidence_threshold = 45  # Good! Stay aggressive!
+            logger.debug(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 45%")
         elif recent_win_rate >= 45:
-            self.current_confidence_threshold = 62  # Mediocre. Be more selective
-            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 62%")
+            self.current_confidence_threshold = 52  # Mediocre. Slightly more selective
+            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 52%")
         else:
-            self.current_confidence_threshold = 70  # Losing! Be very selective
-            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 70%")
+            self.current_confidence_threshold = 60  # Losing! Be selective (but still aggressive)
+            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 60%")
         
         return self.current_confidence_threshold
     
@@ -1914,14 +1899,20 @@ class UltimateHybridBot:
         
         regime_adjustments = adjustments.get(market_regime, adjustments['NEUTRAL'])
         
-        logger.info(f"💰 Capital Allocation Adjusted for {market_regime}:")
-        for strategy, factor in regime_adjustments.items():
+        # 🔥 FILTER: Only show and use ULTRA AGGRESSIVE strategies! 🔥
+        ULTRA_AGGRESSIVE_STRATEGIES = ['SCALPING', 'DAY_TRADING', 'MOMENTUM']
+        filtered_adjustments = {k: v for k, v in regime_adjustments.items() if k in ULTRA_AGGRESSIVE_STRATEGIES}
+        
+        logger.info(f"💰 Capital Allocation (🔥 ULTRA AGGRESSIVE - 3 Strategies! 🔥):")
+        for strategy, factor in filtered_adjustments.items():
             if factor > 1.0:
                 logger.info(f"  ↗️ {strategy}: +{(factor-1)*100:.0f}%")
             elif factor < 1.0:
                 logger.info(f"  ↘️ {strategy}: {(factor-1)*100:.0f}%")
+            else:
+                logger.info(f"  ━ {strategy}: Normal")
         
-        return regime_adjustments
+        return filtered_adjustments  # Return only the 3 strategies!
     
     def detect_support_resistance(self, highs, lows, closes, window=20):
         """
@@ -3527,9 +3518,9 @@ class UltimateHybridBot:
         logger.info(f"\n🎯 MODE: {mode}")
         logger.info(f"💰 Initial Capital: ${self.initial_capital:.2f}")
         logger.info(f"🎯 Base Confidence Threshold: {self.base_confidence_threshold}%")
-        logger.info(f"📊 Total Strategies: {len(STRATEGIES)}")
+        logger.info(f"🔥 Active Strategies: 3 ULTRA AGGRESSIVE! (SCALPING, DAY_TRADING, MOMENTUM)")
         logger.info(f"🪙 Scanning {len(COIN_UNIVERSE)} coins across {len(API_KEYS)} API keys")
-        logger.info(f"⏱️  Scan Interval: 45 seconds")
+        logger.info(f"⏱️  Scan Interval: 30 seconds (🔥 ULTRA AGGRESSIVE! 🔥)")
         logger.info(f"{'='*70}\n")
         
         cycle = 0
@@ -3543,11 +3534,11 @@ class UltimateHybridBot:
                 
                 self.run_trading_cycle()
                 
-                # 🚀 OPTIMIZATION: Faster scanning - 45 seconds!
+                # 🚀 OPTIMIZATION: Faster scanning - 30 seconds! 🔥 ULTRA AGGRESSIVE! 🔥
                 # Old: 120s (30 scans/hour)
-                # New: 45s (80 scans/hour) = 2.67x more opportunities!
-                logger.info(f"\n⏳ Next scan in 45 seconds...\n")
-                time.sleep(45)
+                # New: 30s (120 scans/hour) = 4x more opportunities!
+                logger.info(f"\n⏳ Next scan in 30 seconds...\n")
+                time.sleep(30)
                 
             except KeyboardInterrupt:
                 logger.info("\n🛑 Stopping bot...")
@@ -3630,7 +3621,7 @@ def get_stats():
             'total_coins': len(COIN_UNIVERSE),
             'api_keys_count': len(trading_bot.api_keys),
             'market_regime': trading_bot.current_market_regime,
-            'scan_frequency': '45 seconds',
+            'scan_frequency': '30 seconds (🔥 ULTRA AGGRESSIVE! 🔥)',
             # 💰 AUTO-COMPOUNDING STATS
             'initial_capital': trading_bot.initial_capital,
             'total_equity': total_equity,
