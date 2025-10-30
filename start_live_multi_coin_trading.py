@@ -2352,6 +2352,7 @@ class UltimateHybridBot:
                 import time
                 self.market_data[symbol] = {
                     'price': closes[-1],
+                    'history': closes[-20:],  # 🔥 FIX: Add 'history' for calculate_mhi()!
                     'closes': closes[-20:],  # Only last 20! (was 200)
                     'highs': highs[-20:],     # Only last 20!
                     'lows': lows[-20:],       # Only last 20!
@@ -2992,6 +2993,7 @@ class UltimateHybridBot:
                 # Check if already have position with this strategy
                 position_key = f"{symbol}_{strategy_name}"
                 if position_key in self.positions:
+                    logger.debug(f"⏸️ {symbol}: Already have {strategy_name} position, skipping")
                     return False
                 
                 # 🔥 BUG FIX: Validate strategy_name exists in STRATEGIES!
@@ -3002,11 +3004,13 @@ class UltimateHybridBot:
                 # Check max positions for strategy
                 strategy_positions = [p for p in self.positions.values() if p['strategy'] == strategy_name]
                 if len(strategy_positions) >= STRATEGIES[strategy_name]['max_positions']:
+                    logger.debug(f"⏸️ {symbol}: Max {strategy_name} positions reached ({len(strategy_positions)}/{STRATEGIES[strategy_name]['max_positions']})")
                     return False
                 
                 # Calculate position size
                 quantity = self.calculate_position_size(symbol, strategy_name, price)
                 if quantity <= 0:
+                    logger.info(f"❌ {symbol}: Position size too small (quantity={quantity}), skipping")
                     return False
                 
                 # 🔥 CRITICAL: Pre-calculate ALL data BEFORE placing live order!
