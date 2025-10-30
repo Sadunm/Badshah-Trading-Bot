@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Logs
+logs/*.log
+
+# Data (don't include in image)
+data/raw/
+data/processed/
+user_data/backtest_results/
+user_data/hyperopt_results/
+models/*.pkl
+*.csv
+
+# Reports
+reports/*.png
+reports/*.html
+
+# Documentation
+*.md
+*.txt
+!requirements.txt
+!requirements_render.txt
+
+# Deployment
+deployment/
+.dockerignore
+Dockerfile
+
+# OS
+.DS_Store
+Thumbs.db
+
