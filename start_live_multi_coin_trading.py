@@ -27,13 +27,25 @@ from decimal import Decimal, ROUND_DOWN  # 🔥 For precise quantity formatting
 os.makedirs('logs', exist_ok=True)
 os.makedirs('data', exist_ok=True)
 
+# ====================================================================
+# FIX WINDOWS CONSOLE ENCODING FOR EMOJIS
+# ====================================================================
+# Reconfigure stdout to use UTF-8 encoding on Windows (prevents UnicodeEncodeError)
+if sys.platform == 'win32':
+    try:
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+    except Exception:
+        pass  # If this fails, emojis will show as '?' but bot will still work
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/multi_coin_trading.log'),
-        logging.StreamHandler()
+        logging.FileHandler('logs/multi_coin_trading.log', encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)  # Now uses UTF-8 wrapped stdout
     ]
 )
 logger = logging.getLogger(__name__)
@@ -591,16 +603,8 @@ class UltimateHybridBot:
         
         # 🎯 ADAPTIVE CONFIDENCE SYSTEM
         self.recent_trades_window = deque(maxlen=20)  # Last 20 trades (win/loss only)
-        
-        # 🎯 REALISTIC THRESHOLDS: Different for Paper vs Live!
-        if LIVE_TRADING_MODE:
-            # LIVE MODE: More conservative (real money!)
-            self.base_confidence_threshold = 60  # 60% for live (balanced!)
-            self.current_confidence_threshold = 60
-        else:
-            # PAPER MODE: Slightly aggressive (testing strategies)
-            self.base_confidence_threshold = 52  # 52% for paper (realistic!)
-            self.current_confidence_threshold = 52
+        self.base_confidence_threshold = 55  # 55% - BALANCED for both paper and live!
+        self.current_confidence_threshold = 55  # Not too strict, not too loose!
         
         # Capital management
         self.initial_capital = initial_capital
@@ -845,35 +849,19 @@ class UltimateHybridBot:
         total = len(self.recent_trades_window)
         recent_win_rate = (wins / total) * 100 if total > 0 else 50
         
-        # 🎯 REALISTIC ADAPTIVE THRESHOLDS: Different for Paper vs Live!
-        if LIVE_TRADING_MODE:
-            # 💰 LIVE MODE: Conservative adjustments (protect real money!)
-            if recent_win_rate >= 65:
-                self.current_confidence_threshold = 55  # Still selective
-                logger.info(f"🎯 ADAPTIVE (LIVE): Win rate {recent_win_rate:.0f}% → threshold 55%")
-            elif recent_win_rate >= 55:
-                self.current_confidence_threshold = 60  # Base
-                logger.debug(f"🎯 ADAPTIVE (LIVE): Win rate {recent_win_rate:.0f}% → threshold 60%")
-            elif recent_win_rate >= 45:
-                self.current_confidence_threshold = 68  # More careful
-                logger.warning(f"🎯 ADAPTIVE (LIVE): Win rate {recent_win_rate:.0f}% → threshold 68%")
-            else:
-                self.current_confidence_threshold = 75  # Very selective
-                logger.warning(f"🎯 ADAPTIVE (LIVE): Win rate {recent_win_rate:.0f}% → threshold 75%")
+        # Adjust confidence threshold based on recent performance
+        if recent_win_rate >= 65:
+            self.current_confidence_threshold = 50  # Winning! Be more aggressive
+            logger.info(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 50%")
+        elif recent_win_rate >= 55:
+            self.current_confidence_threshold = 55  # Good! Keep base threshold
+            logger.debug(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 55%")
+        elif recent_win_rate >= 45:
+            self.current_confidence_threshold = 62  # Mediocre. Be more selective
+            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 62%")
         else:
-            # 📊 PAPER MODE: Moderate adjustments (testing strategies)
-            if recent_win_rate >= 65:
-                self.current_confidence_threshold = 48  # Slightly aggressive
-                logger.info(f"🎯 ADAPTIVE (PAPER): Win rate {recent_win_rate:.0f}% → threshold 48%")
-            elif recent_win_rate >= 55:
-                self.current_confidence_threshold = 52  # Base
-                logger.debug(f"🎯 ADAPTIVE (PAPER): Win rate {recent_win_rate:.0f}% → threshold 52%")
-            elif recent_win_rate >= 45:
-                self.current_confidence_threshold = 58  # More selective
-                logger.warning(f"🎯 ADAPTIVE (PAPER): Win rate {recent_win_rate:.0f}% → threshold 58%")
-            else:
-                self.current_confidence_threshold = 65  # Very selective
-                logger.warning(f"🎯 ADAPTIVE (PAPER): Win rate {recent_win_rate:.0f}% → threshold 65%")
+            self.current_confidence_threshold = 70  # Losing! Be very selective
+            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 70%")
         
         return self.current_confidence_threshold
     
@@ -4856,7 +4844,7 @@ def dashboard():
                 
                 // For very small prices (< $0.01) - use more decimals
                 if (price < 0.01) {
-                    return '$' + price.toFixed(8).replace(/\.?0+$/, ''); // Remove trailing zeros
+                    return '$' + price.toFixed(8).replace(/\\.?0+$/, ''); // Remove trailing zeros
                 }
                 // For small prices (< $1) - use 4 decimals
                 else if (price < 1) {
