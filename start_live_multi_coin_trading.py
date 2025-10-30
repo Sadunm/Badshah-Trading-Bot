@@ -786,15 +786,15 @@ class UltimateHybridBot:
                 
                 logger.info(f"📈 EPRU Updated: {self.epru:.2f} (Avg Win: ${self.avg_win:.2f}, Avg Loss: ${self.avg_loss:.2f}, WR: {win_rate*100:.1f}%)")
                 
-                # 🔥 FEEDBACK LOOP: Adjust based on EPRU!
-                if self.epru < 1.0:
-                    # Losing more than winning - be MORE selective!
-                    self.base_confidence_threshold = min(60, self.base_confidence_threshold + 2)
-                    logger.warning(f"⚠️ EPRU < 1.0 → Increasing threshold to {self.base_confidence_threshold}%")
-                elif self.epru > 1.3 and len(self.trades) < 10:  # Not enough trades yet
-                    # Winning well but few trades - be LESS selective!
-                    self.base_confidence_threshold = max(35, self.base_confidence_threshold - 2)
-                    logger.info(f"✅ EPRU > 1.3 → Decreasing threshold to {self.base_confidence_threshold}% (more trades!)")
+                # 🔥 FEEDBACK LOOP: Adjust based on EPRU! (EXTREME MODE - MINIMAL ADJUSTMENTS!)
+                if self.epru < 0.5:  # Only adjust if VERY bad (was 1.0)
+                    # Losing badly - be slightly MORE selective!
+                    self.base_confidence_threshold = min(25, self.base_confidence_threshold + 1)  # Max 25% (was 60%)
+                    logger.warning(f"⚠️ EPRU < 0.5 → Increasing threshold to {self.base_confidence_threshold}%")
+                elif self.epru > 1.5 and len(self.trades) < 10:  # Winning very well
+                    # Winning well but few trades - be even MORE aggressive!
+                    self.base_confidence_threshold = max(8, self.base_confidence_threshold - 1)  # Min 8% (was 35%)
+                    logger.info(f"✅ EPRU > 1.5 → Decreasing threshold to {self.base_confidence_threshold}% (more trades!)")
             
         except Exception as e:
             logger.error(f"Error updating EPRU: {e}")
@@ -928,22 +928,22 @@ class UltimateHybridBot:
             logger.info(f"  Current Threshold: {self.base_confidence_threshold}%")
             logger.info(f"  Current Exposure: {self.current_exposure*100:.1f}%")
             
-            # Decision logic
-            if self.epru < 1.0:
-                logger.warning(f"  ⚠️ EPRU < 1.0 → System losing money!")
-                logger.warning(f"  🔧 AUTO-ADJUST: Increase threshold +5%, Reduce exposure -10%")
-                self.base_confidence_threshold = min(65, self.base_confidence_threshold + 5)
+            # Decision logic (EXTREME MODE - MINIMAL ADJUSTMENTS!)
+            if self.epru < 0.5:  # Only if VERY bad (was 1.0)
+                logger.warning(f"  ⚠️ EPRU < 0.5 → System losing badly!")
+                logger.warning(f"  🔧 AUTO-ADJUST: Increase threshold +2%, Reduce exposure -10%")
+                self.base_confidence_threshold = min(25, self.base_confidence_threshold + 2)  # Max 25% (was 65%)
                 self.current_exposure *= 0.9
                 
-            elif self.epru > 1.3 and win_rate > 60:
-                logger.info(f"  ✅ EPRU > 1.3 & WR > 60% → System profitable!")
-                logger.info(f"  🔧 AUTO-ADJUST: Decrease threshold -3%, Keep exposure")
-                self.base_confidence_threshold = max(35, self.base_confidence_threshold - 3)
+            elif self.epru > 1.5 and win_rate > 60:  # Higher bar (was 1.3)
+                logger.info(f"  ✅ EPRU > 1.5 & WR > 60% → System very profitable!")
+                logger.info(f"  🔧 AUTO-ADJUST: Decrease threshold -2%, Keep exposure")
+                self.base_confidence_threshold = max(8, self.base_confidence_threshold - 2)  # Min 8% (was 35%)
                 
-            elif win_rate < 45:
-                logger.warning(f"  ⚠️ Win Rate < 45% → Too many losses!")
-                logger.warning(f"  🔧 AUTO-ADJUST: Increase threshold +3%")
-                self.base_confidence_threshold = min(65, self.base_confidence_threshold + 3)
+            elif win_rate < 35:  # Lower bar (was 45)
+                logger.warning(f"  ⚠️ Win Rate < 35% → Many losses!")
+                logger.warning(f"  🔧 AUTO-ADJUST: Increase threshold +2%")
+                self.base_confidence_threshold = min(25, self.base_confidence_threshold + 2)  # Max 25% (was 65%)
             
             logger.info(f"{'='*70}\n")
             
@@ -1156,19 +1156,19 @@ class UltimateHybridBot:
         recent_win_rate = (wins / total) * 100 if total > 0 else 50
         
         # Adjust confidence threshold based on recent performance
-        # 🔥 ULTRA AGGRESSIVE THRESHOLDS! 🔥
+        # 🔥🔥🔥 EXTREME AGGRESSIVE THRESHOLDS - TRADES WILL HAPPEN! 🔥🔥🔥
         if recent_win_rate >= 65:
-            self.current_confidence_threshold = 40  # Winning! MAXIMUM AGGRESSION! 🚀
-            logger.info(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 40% 🔥")
+            self.current_confidence_threshold = 10  # Winning! KEEP IT EXTREME! 🚀
+            logger.info(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 10% 🔥")
         elif recent_win_rate >= 55:
-            self.current_confidence_threshold = 45  # Good! Stay aggressive!
-            logger.debug(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 45%")
+            self.current_confidence_threshold = 12  # Good! Stay extreme!
+            logger.debug(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 12%")
         elif recent_win_rate >= 45:
-            self.current_confidence_threshold = 52  # Mediocre. Slightly more selective
-            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 52%")
+            self.current_confidence_threshold = 15  # OK! Still aggressive
+            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 15%")
         else:
-            self.current_confidence_threshold = 60  # Losing! Be selective (but still aggressive)
-            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 60%")
+            self.current_confidence_threshold = 20  # Losing! Be slightly careful
+            logger.warning(f"🎯 ADAPTIVE: Win rate {recent_win_rate:.0f}% → threshold 20%")
         
         return self.current_confidence_threshold
     

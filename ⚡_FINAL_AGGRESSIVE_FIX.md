@@ -279,3 +279,5 @@ if atr_pct < 0.5:  # Need minimal volatility!
 
 **LET'S GO! 🚀💰🔥**
 
+
+
