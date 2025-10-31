@@ -1443,25 +1443,56 @@ class UltimateHybridBot:
             'X-MBX-APIKEY': api_creds['key']
         }
         
-        # Make request
+        # Make request with retry logic
         url = f"{self.base_url}{endpoint}"
+        max_retries = 3
         
-        try:
-            if method == 'GET':
-                response = requests.get(url, params=params, headers=headers, timeout=10)
-            elif method == 'POST':
-                response = requests.post(url, params=params, headers=headers, timeout=10)
-            elif method == 'DELETE':
-                response = requests.delete(url, params=params, headers=headers, timeout=10)
-            else:
-                logger.error(f"❌ Unsupported HTTP method: {method}")
-                return None
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"❌ Error in signed request: {e}")
-            return None
+        for attempt in range(max_retries):
+            try:
+                if method == 'GET':
+                    response = requests.get(url, params=params, headers=headers, timeout=10)
+                elif method == 'POST':
+                    response = requests.post(url, params=params, headers=headers, timeout=10)
+                elif method == 'DELETE':
+                    response = requests.delete(url, params=params, headers=headers, timeout=10)
+                else:
+                    logger.error(f"❌ Unsupported HTTP method: {method}")
+                    return None
+                
+                # Check for rate limiting
+                if response.status_code == 429:
+                    wait_time = (2 ** attempt) * 2
+                    logger.warning(f"Rate limited (signed request), waiting {wait_time}s")
+                    if attempt < max_retries - 1:
+                        time.sleep(wait_time)
+                        continue
+                
+                return response
+                
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(f"Timeout in signed request, retry {attempt+1}/{max_retries} in {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"❌ Timeout in signed request after {max_retries} attempts")
+                    return None
+            except requests.exceptions.ConnectionError as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(f"Connection error in signed request: {e}, retry {attempt+1}/{max_retries} in {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"❌ Connection error in signed request after {max_retries} attempts: {e}")
+                    return None
+            except Exception as e:
+                logger.error(f"❌ Error in signed request: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                else:
+                    return None
+        
+        return None
     
     def get_account_balance(self, asset='USDT'):
         """
@@ -1918,11 +1949,18 @@ class UltimateHybridBot:
             
             for tf in timeframes:
                 closes, highs, lows, volumes, opens = self.get_klines(symbol, tf, 50)
-                if closes is None:
+                if closes is None or len(closes) < 21:  # Need at least 21 for EMA(21)
                     continue
                 
-                ema_9 = talib.EMA(closes, 9)[-1]
-                ema_21 = talib.EMA(closes, 21)[-1]
+                # 🔧 FIX: Check EMA arrays have enough elements before accessing [-1]
+                ema_9_arr = talib.EMA(closes, 9)
+                ema_21_arr = talib.EMA(closes, 21)
+                
+                if len(ema_9_arr) == 0 or len(ema_21_arr) == 0:
+                    continue
+                
+                ema_9 = float(ema_9_arr[-1]) if not np.isnan(ema_9_arr[-1]) else closes[-1]
+                ema_21 = float(ema_21_arr[-1]) if not np.isnan(ema_21_arr[-1]) else closes[-1]
                 
                 if action == 'BUY':
                     alignments[tf] = ema_9 > ema_21
@@ -1932,7 +1970,8 @@ class UltimateHybridBot:
             # At least 2 out of 3 timeframes should agree
             agreement = sum(alignments.values()) >= 2
             return agreement, alignments
-        except:
+        except Exception as e:
+            logger.debug(f"Error in multi-timeframe alignment check: {e}")
             return True, {}  # Don't block if check fails
     
     def calculate_risk_reward_ratio(self, entry_price, stop_loss, take_profit):
@@ -2005,6 +2044,13 @@ class UltimateHybridBot:
                     time.sleep(wait_time)
                 else:
                     logger.error(f"Failed to get price for {symbol} after {max_retries} attempts (timeout)")
+            except requests.exceptions.ConnectionError as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(f"Connection error for {symbol}: {e}, retry {attempt+1}/{max_retries} in {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Connection error for {symbol} after {max_retries} attempts: {e}")
             except Exception as e:
                 if attempt < max_retries - 1:
                     wait_time = 2 ** attempt
@@ -2146,13 +2192,13 @@ class UltimateHybridBot:
             indicators['volume_current'] = volumes[-1]
             indicators['volume_ratio'] = (volumes[-1] / volume_avg) if volume_avg > 0 else 1.0
             
-            # 🔧 FIX: Momentum with zero-division protection
-            if closes[-3] > 0:
+            # 🔧 FIX: Momentum with zero-division protection AND length validation
+            if len(closes) >= 4 and closes[-3] > 0:
                 indicators['momentum_3'] = (closes[-1] - closes[-3]) / closes[-3] * 100
             else:
                 indicators['momentum_3'] = 0.0
                 
-            if closes[-10] > 0:
+            if len(closes) >= 11 and closes[-10] > 0:
                 indicators['momentum_10'] = (closes[-1] - closes[-10]) / closes[-10] * 100
             else:
                 indicators['momentum_10'] = 0.0
